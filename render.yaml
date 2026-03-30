@@ -1,0 +1,40 @@
+services:
+  - type: web
+    name: autoqa-pro
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.11
+      - key: DEBUG
+        value: "0"
+      - key: AUTOQA_PAGE_LOAD_TIMEOUT_SEC
+        value: "10"
+      - key: MAX_CRAWL_PAGES
+        value: "30"
+      - key: AUTOQA_CRAWL_WORKERS
+        value: "3"
+      - key: AUTOQA_TEST_WORKERS
+        value: "4"
+      - key: AUTOQA_CRAWL_RETRIES
+        value: "2"
+      - key: WEBHOOK_TIMEOUT_SEC
+        value: "12"
+      - key: AUTOQA_CRITICAL_ALERT_THRESHOLD
+        value: "1"
+      - key: AUTOQA_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: LLM_API_KEY
+        sync: false
+      - key: LLM_PROVIDER
+        sync: false
+      - key: LLM_MODEL
+        sync: false

@@ -63,7 +63,7 @@ TEST_EXECUTION_WORKERS = max(1, min(5, TEST_EXECUTION_WORKERS))
 # Integrations: set AUTOQA_API_KEY to require Bearer / X-API-Key on POST /api/run-full-test
 AUTOQA_API_KEY = _env("AUTOQA_API_KEY")
 # Public base URL for webhook payloads (links). If empty, each request uses Host header.
-PUBLIC_BASE_URL = _env("PUBLIC_BASE_URL").rstrip("/")
+PUBLIC_BASE_URL = _env("PUBLIC_BASE_URL", os.environ.get("RENDER_EXTERNAL_URL", "")).rstrip("/")
 
 WEBHOOK_TIMEOUT_SEC = int(_env("WEBHOOK_TIMEOUT_SEC", "12"))
 

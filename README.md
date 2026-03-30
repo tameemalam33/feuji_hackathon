@@ -132,6 +132,29 @@ curl http://127.0.0.1:5000/api/health
 curl http://127.0.0.1:5000/api/runs/latest
 ```
 
+## Render Deployment
+This repository includes a [`render.yaml`](render.yaml) Blueprint for deploying the web app on Render.
+
+### Recommended settings
+- **Service type:** Web Service
+- **Runtime:** Python
+- **Build command:** `pip install -r requirements.txt`
+- **Start command:** `gunicorn app:app --bind 0.0.0.0:$PORT`
+- **Health check path:** `/api/health`
+- **Python version:** `3.11.11`
+
+### Deployment steps
+1. Push the repository to GitHub.
+2. Connect the GitHub repo in the Render dashboard.
+3. Let Render detect the `render.yaml` Blueprint, or create a web service manually.
+4. Add required secrets such as `AUTOQA_API_KEY`, `OPENAI_API_KEY`, or `GROQ_API_KEY` in the Render environment settings.
+5. Deploy the service and open the generated `onrender.com` URL.
+
+### Important note
+- The app can run on Render as a demo/dashboard service.
+- Long Selenium scans may be slow or may exceed free-tier limits.
+- If you want persistent scan history and generated files across redeploys, add a Render persistent disk and mount it for the database and output folders.
+
 ## Screenshots
 Add your screenshot and video links here:
 
