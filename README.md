@@ -158,10 +158,14 @@ This repository includes a [`render.yaml`](render.yaml) Blueprint for deploying 
 ## Screenshots
 Add your screenshot and video links here:
 
-- Dashboard screenshot: `PASTE GOOGLE DRIVE LINK HERE`
-- Test history screenshot: `PASTE GOOGLE DRIVE LINK HERE`
-- Report view screenshot: `PASTE GOOGLE DRIVE LINK HERE`
-- Video demo link: `PASTE GOOGLE DRIVE LINK HERE`
+- Dashboard screenshot: `https://drive.google.com/drive/folders/1Z6uoiGOPEMMb63XjsWmStJPbv3EHenD7?usp=drive_link 
+`
+- Test history screenshot: `https://drive.google.com/drive/folders/1Z6uoiGOPEMMb63XjsWmStJPbv3EHenD7?usp=drive_link 
+`
+- Report view screenshot: `https://drive.google.com/drive/folders/1Z6uoiGOPEMMb63XjsWmStJPbv3EHenD7?usp=drive_link 
+link se folder open hora ki deakhoE`
+- Video demo link: `https://drive.google.com/drive/folders/1Z6uoiGOPEMMb63XjsWmStJPbv3EHenD7?usp=drive_link 
+link se folder open hora ki deakho`
 
 ## Demo / Usage
 1. Open the dashboard in your browser.
@@ -214,3 +218,4 @@ User enters a URL
 - Generated files such as `instance/`, `__pycache__/`, virtual environments, screenshots, and PDFs are intentionally excluded from commits.
 - The repository is meant to stay clean and easy to review before submission.
 - Screenshots and video evidence should be linked from Drive in the section above.
+
