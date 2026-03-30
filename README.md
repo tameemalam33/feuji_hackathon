@@ -216,8 +216,8 @@ User enters a URL
 - The **database** stores scan history, page audits, and test results.
 - The **AI layer** converts raw failures into concise, actionable guidance.
 
-## Submission Notes
-- Generated files such as `instance/`, `__pycache__/`, virtual environments, screenshots, and PDFs are intentionally excluded from commits.
-- The repository is meant to stay clean and easy to review before submission.
-- Screenshots and video evidence should be linked from Drive in the section above.
+## 🚀 Live Demo
+
+🔗 [Open AutoQA Pro](https://autoqa-pro-production-7657.up.railway.app)
+ 
 
