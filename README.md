@@ -163,7 +163,7 @@ Add your screenshot and video links here:
 - Test history screenshot: `https://drive.google.com/drive/folders/1Z6uoiGOPEMMb63XjsWmStJPbv3EHenD7?usp=drive_link 
 `
 - Report view screenshot: `https://drive.google.com/drive/folders/1Z6uoiGOPEMMb63XjsWmStJPbv3EHenD7?usp=drive_link 
-link se folder open hora ki deakhoE`
+`
 - Video demo link: `https://drive.google.com/drive/folders/1Z6uoiGOPEMMb63XjsWmStJPbv3EHenD7?usp=drive_link 
 `
 
@@ -206,6 +206,8 @@ User enters a URL
     -> AI analysis generates suggestions and insights
     -> Dashboard renders scores, issues, and downloadable reports
 ```
+- architecture 3dview : `https://systemarc.vercel.app/`
+
 
 ### Simple Flow Explanation
 - The **dashboard** captures the target URL and scan options.
