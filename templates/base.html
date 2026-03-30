@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}AutoQA Pro{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}" />
+    {% block head_extra %}{% endblock %}
+  </head>
+  <body>
+    <div class="layout">
+      <aside class="sidebar">
+        <button type="button" id="sidebar-toggle" class="sidebar-toggle" aria-label="Toggle sidebar">☰</button>
+        <div class="brand">AutoQA Pro</div>
+        <div class="brand-sub">Autonomous UI Testing</div>
+        <nav class="nav">
+          <a href="{{ url_for('dashboard') }}"><span class="nav-icon" aria-hidden="true">◆</span>Dashboard</a>
+          <a href="{{ url_for('history') }}"><span class="nav-icon" aria-hidden="true">◇</span>Test History</a>
+          <a href="{{ url_for('test_cases_page') }}"><span class="nav-icon" aria-hidden="true">▣</span>Test Cases</a>
+          <a href="{{ url_for('pages_view') }}"><span class="nav-icon" aria-hidden="true">▦</span>Pages</a>
+          <a href="{{ url_for('visualization') }}"><span class="nav-icon" aria-hidden="true">▤</span>Data Visualization</a>
+          <a href="#" id="nav-report-page"><span class="nav-icon" aria-hidden="true">◇</span>Full Report</a>
+          <a href="#" id="nav-download-report"><span class="nav-icon" aria-hidden="true">↓</span>Download PDF</a>
+        </nav>
+      </aside>
+      <main class="main">
+        <div class="global-status-bar">
+          <div class="global-status-track"><i id="global-run-progress"></i></div>
+          <div id="global-run-status-text" class="global-status-text">No active run selected</div>
+        </div>
+        {% block content %}{% endblock %}
+      </main>
+    </div>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script>
+      (function () {
+        var link = document.getElementById("nav-download-report");
+        if (link) {
+          link.addEventListener("click", function (e) {
+            e.preventDefault();
+            var id = window.AutoQA && window.AutoQA.getRunId ? window.AutoQA.getRunId() : null;
+            if (!id) {
+              alert("Run a test first or open a run from History.");
+              return;
+            }
+            window.location.href = "/api/download-report/" + id;
+          });
+        }
+        var rep = document.getElementById("nav-report-page");
+        if (rep) {
+          rep.addEventListener("click", function (e) {
+            e.preventDefault();
+            var id = window.AutoQA && window.AutoQA.getRunId ? window.AutoQA.getRunId() : null;
+            if (!id) {
+              alert("Run a test first or open a run from History.");
+              return;
+            }
+            window.location.href = "/report/" + id;
+          });
+        }
+      })();
+    </script>
+    {% block scripts %}{% endblock %}
+  </body>
+</html>

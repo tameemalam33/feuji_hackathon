@@ -1,0 +1,668 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — AutoQA Pro{% endblock %}
+{% block content %}
+<h1>Dashboard</h1>
+<div id="global-alert" class="alert-banner-global" role="status" aria-live="polite"></div>
+<p class="lead">Enter a URL and run the full automated QA pipeline in one step.</p>
+
+<div class="card">
+  <form id="run-form" autocomplete="off">
+    <div class="row">
+      <div style="flex: 2">
+        <label for="url">Website URL</label>
+        <input type="url" id="url" name="url" placeholder="https://example.com" required />
+      </div>
+      <div>
+        <label for="crawl_mode">Crawl mode</label>
+        <select id="crawl_mode" name="crawl_mode">
+          <option value="quick">Quick (10 pages)</option>
+          <option value="standard" selected>Standard (30 pages)</option>
+          <option value="deep">Deep (100 pages)</option>
+          <option value="full">Full (unlimited with safety)</option>
+        </select>
+        <div id="full-mode-warning" style="display:none; color:#fbbf24; font-size:0.82rem; margin-top:0.3rem">
+          ⚠ Full crawl may take several minutes depending on website size.
+        </div>
+      </div>
+      <div>
+        <label for="max_pages">Override page cap (optional)</label>
+        <input type="number" id="max_pages" name="max_pages" min="1" max="5000" placeholder="optional manual cap" style="width: 100%; min-width: 120px; padding: 0.65rem 0.75rem; border-radius: 8px; border: 1px solid var(--border); background: #0b1220; color: var(--text)" />
+      </div>
+      <div>
+        <label>&nbsp;</label>
+        <button type="submit" class="btn" id="btn-run">Run full QA</button>
+      </div>
+    </div>
+    <details style="margin-top: 1rem; color: #94a3b8; font-size: 0.9rem">
+      <summary style="cursor: pointer; color: #c7d2fe">Integrations (optional)</summary>
+      <div class="row" style="margin-top: 0.75rem">
+        <div style="flex: 2">
+          <label for="webhook_url">Webhook URL (HTTPS)</label>
+          <input type="url" id="webhook_url" name="webhook_url" placeholder="https://hooks.slack.com/... or webhook.site URL" />
+        </div>
+        <div>
+          <label for="api_key">API key</label>
+          <input type="password" id="api_key" name="api_key" placeholder="If server uses AUTOQA_API_KEY" autocomplete="off" />
+        </div>
+      </div>
+      <p style="margin: 0.5rem 0 0; font-size: 0.85rem">
+        On completion, a JSON payload is POSTed to the webhook (<code>event: autoqa.run.completed</code>). CI example:
+        <code style="color: #c7d2fe">examples/github-actions-autoqa.yml</code>
+      </p>
+    </details>
+  </form>
+
+  <div class="loading-overlay" id="loading">
+    <div class="spinner" aria-hidden="true"></div>
+    <div style="flex: 1">
+      <strong>Running full pipeline…</strong>
+      <div class="muted" style="color: #94a3b8; font-size: 0.9rem; margin-top: 0.25rem" id="loading-status">
+        Starting…
+      </div>
+      <div class="progress-bar" style="margin-top: 0.75rem"><i id="progress"></i></div>
+      <div style="color:#94a3b8; font-size:0.85rem; margin-top:0.4rem" id="crawl-counter"></div>
+    </div>
+  </div>
+
+  <div id="error" class="alert" style="display: none"></div>
+  <div id="success" class="alert ok" style="display: none"></div>
+  <details id="crawl-log-wrap" style="margin-top:0.6rem; display:none">
+    <summary style="cursor:pointer; color:#c7d2fe">View crawl logs</summary>
+    <pre id="crawl-logs" style="max-height:180px; overflow:auto; margin-top:0.4rem; font-size:0.8rem; color:#94a3b8"></pre>
+  </details>
+
+  <div id="summary" style="display: none">
+    <div class="metrics">
+      <div class="metric metric-hero">
+        <div class="metric-stat">
+          <div><div class="k">Health score</div><div class="v health-hero" id="m-health">0</div><div class="metric-sub">Overall QA health</div></div>
+          <div style="position:relative; display:grid; place-items:center">
+            <div class="health-ring" id="health-ring"></div>
+            <span class="health-ring-label" id="health-ring-label">0%</span>
+          </div>
+        </div>
+      </div>
+      <div class="metric metric-coverage" id="cov-metric"><div class="metric-stat"><div><div class="k">Coverage</div><div class="v" id="m-cov">0%</div><div class="metric-sub">Element coverage</div></div><div class="metric-icon">◎</div></div></div>
+      <div class="metric metric-critical fail"><div class="metric-stat"><div><div class="k">Failed pages</div><div class="v" id="m-pages-fail">0</div><div class="metric-sub">Crawl failures</div></div><div class="metric-icon">⚠</div></div></div>
+      <div class="metric"><div class="metric-stat"><div><div class="k">Performance</div><div class="v" id="m-perf">0</div><div class="metric-sub">Run perf score</div></div><div class="metric-icon">↗</div></div></div>
+      <div class="metric"><div class="k">Run ID</div>
+        <div class="v" id="m-run">0</div><div class="metric-sub">Current context</div></div>
+      <div class="metric"><div class="k">Total</div>
+        <div class="v" id="m-total">0</div></div>
+      <div class="metric pass"><div class="k">Passed</div>
+        <div class="v" id="m-pass">0</div></div>
+      <div class="metric fail"><div class="k">Failed</div>
+        <div class="v" id="m-fail">0</div></div>
+      <div class="metric fail"><div class="k">Critical</div>
+        <div class="v" id="m-crit">0</div></div>
+      <div class="metric"><div class="k">Success</div>
+        <div class="v" id="m-rate">0%</div></div>
+      <div class="metric"><div class="k">Accessibility</div>
+        <div class="v" id="m-a11y">0%</div></div>
+      <div class="metric"><div class="k">Security</div>
+        <div class="v" id="m-sec">0%</div></div>
+      <div class="metric"><div class="k">Pages discovered</div>
+        <div class="v" id="m-pages-disc">0</div></div>
+      <div class="metric"><div class="k">Pages visited</div>
+        <div class="v" id="m-pages-vis">0</div></div>
+    </div>
+    <div class="insights-box" id="enterprise-panel" style="display: none; margin-top: 1rem">
+      <strong style="color: var(--text)">User flows tested</strong>
+      <ul id="flows-list" style="margin: 0.35rem 0 0.75rem; padding-left: 1.25rem"></ul>
+      <strong style="color: var(--text)">Accessibility score</strong>
+      <p id="ent-a11y-line" style="margin: 0.25rem 0 0.75rem; color: var(--muted)">Accessibility score: 0%</p>
+      <strong style="color: var(--text)">Security warnings</strong>
+      <ul id="sec-warn-list" style="margin: 0.35rem 0 0.75rem; padding-left: 1.25rem"></ul>
+      <strong style="color: var(--text)">Performance breakdown</strong>
+      <pre id="perf-breakdown" style="margin: 0.35rem 0 0; font-size: 0.8rem; color: var(--muted); white-space: pre-wrap"></pre>
+    </div>
+    <div class="insights-box" id="insights-box" style="display: none">
+      <strong style="color: var(--text)">Insights</strong>
+      <ul id="insights-list"></ul>
+    </div>
+
+    <div id="issue-cards-wrap" style="display:none; margin-top: 1.25rem">
+      <div style="margin-bottom: 1rem">
+        <div style="font-weight:800; color:#fecaca; margin-bottom:0.45rem">🔴 Critical Issues</div>
+        <div id="issue-cards-critical" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0.75rem"></div>
+        <div id="issue-empty-critical" style="color: var(--muted); font-size:0.95rem; margin-top:0.4rem; display:none">✅ No critical issues found</div>
+      </div>
+      <div style="margin-bottom: 1rem">
+        <div style="font-weight:800; color:#fde68a; margin-bottom:0.45rem">🟡 Warnings</div>
+        <div id="issue-cards-warning" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0.75rem"></div>
+        <div id="issue-empty-warning" style="color: var(--muted); font-size:0.95rem; margin-top:0.4rem; display:none">No warnings</div>
+      </div>
+      <div>
+        <div style="font-weight:800; color:#bbf7d0; margin-bottom:0.45rem">🟢 Passed Tests</div>
+        <div id="issue-cards-passed" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0.75rem"></div>
+      </div>
+    </div>
+
+    <div class="row">
+      <a class="btn btn-secondary" id="link-tests" href="/test-cases">Open Test Cases</a>
+      <a class="btn btn-secondary" id="link-pages" href="/pages">Open Pages</a>
+      <a class="btn btn-secondary" id="link-viz" href="/visualization">Open Charts</a>
+      <a class="btn" id="link-report" href="#">Full report (HTML)</a>
+      <a class="btn btn-secondary" id="link-pdf" href="#">Download PDF report</a>
+      <button type="button" class="btn btn-secondary" id="btn-compare">Compare to previous run</button>
+    </div>
+    <div class="compare-panel" id="compare-panel" style="display: none"></div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  (function () {
+    function escHtml(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function refreshGlobalAlert(el) {
+      if (!el) return;
+      fetch("/api/alerts/latest")
+        .then(function (r) {
+          return r.json();
+        })
+        .then(function (a) {
+          if (a.alert) {
+            el.textContent = "❌ " + (a.message || "Critical issues detected in latest run");
+            el.classList.add("active");
+          } else {
+            el.classList.remove("active");
+            el.textContent = "";
+          }
+        })
+        .catch(function () {});
+    }
+
+    function fmtMetricDelta(delta, higherIsBetter) {
+      if (delta == null || isNaN(Number(delta))) return "";
+      var n = Number(delta);
+      var sym = n > 0 ? "↑" : n < 0 ? "↓" : "→";
+      var good = higherIsBetter ? n >= 0 : n <= 0;
+      var cls = good ? "compare-good" : "compare-bad";
+      return ' <span class="' + cls + '">' + sym + " " + Math.abs(n).toFixed(2) + "</span>";
+    }
+
+    function renderComparePanel(c) {
+      if (c.error) return escHtml(c.error);
+      var delta = c.delta;
+      var fcls = delta > 0 ? "compare-bad" : delta < 0 ? "compare-good" : "";
+      var fsign = delta > 0 ? "+" : "";
+      var html = "<strong>vs run #" + escHtml(c.previous_run_id != null ? c.previous_run_id : "?") + "</strong><br/>";
+      html +=
+        'Failures: <span class="' +
+        fcls +
+        '">' +
+        escHtml(c.previous_failed) +
+        " → " +
+        escHtml(c.current_failed) +
+        " (" +
+        fsign +
+        escHtml(delta) +
+        ")</span><br/>";
+      var pr = c.pass_rate || {};
+      html +=
+        '<div class="compare-metric-row">Pass rate: ' +
+        (pr.previous != null ? escHtml(pr.previous) + "%" : "—") +
+        " → " +
+        (pr.current != null ? escHtml(pr.current) + "%" : "—") +
+        fmtMetricDelta(pr.delta, true) +
+        "</div>";
+      var cov = c.coverage || {};
+      html +=
+        '<div class="compare-metric-row">Coverage: ' +
+        (cov.previous != null ? escHtml(cov.previous) + "%" : "—") +
+        " → " +
+        (cov.current != null ? escHtml(cov.current) + "%" : "—") +
+        fmtMetricDelta(cov.delta, true) +
+        "</div>";
+      var perf = c.performance_score || {};
+      html +=
+        '<div class="compare-metric-row">Performance score: ' +
+        (perf.previous != null ? escHtml(perf.previous) : "—") +
+        " → " +
+        (perf.current != null ? escHtml(perf.current) : "—") +
+        fmtMetricDelta(perf.delta, true) +
+        "</div>";
+      html +=
+        "<br/><em>Regressions (new failures):</em> " +
+        (c.regressions || c.new_issues || []).length +
+        " · <em>Improvements (cleared):</em> " +
+        (c.improvements || c.fixed_issues || []).length;
+      if (c.visual_changes) {
+        var vd = c.visual_changes.delta;
+        html += "<br/><em>Visual failed diffs:</em> " + (c.visual_changes.previous_failed == null ? "—" : c.visual_changes.previous_failed) + " → " + c.visual_changes.current_failed + " (" + (vd > 0 ? "+" : "") + vd + ")";
+      }
+      return html;
+    }
+
+    function emptyRunPayload(rid) {
+      // Safe placeholder prevents the dashboard from breaking on missing run rows.
+      return {
+        id: rid,
+        run_id: rid,
+        total: 0,
+        passed: 0,
+        failed: 0,
+        health_score: 0,
+        coverage: 0,
+        performance_score: 0,
+        accessibility_score: 0,
+        security_score: 0,
+        critical_failures: 0,
+        user_flows_tested: [],
+        security_warnings: [],
+        performance_breakdown: {},
+        insights: [],
+        summary: {
+          total_pages_discovered: 0,
+          total_pages_visited: 0,
+          failed_pages: 0,
+          crawl_logs: [],
+          pipeline_logs: [],
+        },
+      };
+    }
+
+    function hydrateDashboard(d, lastRunId) {
+      d = d || emptyRunPayload(lastRunId);
+      var err = document.getElementById("error");
+      if (err) {
+        err.textContent = "";
+        err.style.display = "none";
+      }
+      if (window.AutoQA && window.AutoQA.setRunId) window.AutoQA.setRunId(d.run_id || lastRunId);
+      var rid = d.run_id != null ? d.run_id : lastRunId;
+      var whMsg = "";
+      if (d.integrations && d.integrations.webhook && d.integrations.webhook.attempted) {
+        whMsg = d.integrations.webhook.success
+          ? " Webhook delivered (" + (d.integrations.webhook.http_status || "?") + ")."
+          : " Webhook failed: " + (d.integrations.webhook.error || "unknown") + ".";
+      }
+      var ok = document.getElementById("success");
+      ok.textContent = "Run complete. Run ID " + rid + "." + whMsg;
+      ok.style.display = "block";
+      document.getElementById("summary").style.display = "block";
+      document.getElementById("m-run").textContent = rid;
+      document.getElementById("m-total").textContent = d.total != null ? d.total : 0;
+      document.getElementById("m-pass").textContent = d.passed != null ? d.passed : 0;
+      document.getElementById("m-fail").textContent = d.failed != null ? d.failed : 0;
+      var total = d.total || 0;
+      var passed = d.passed || 0;
+      var rate = total ? ((passed / total) * 100).toFixed(1) : "0";
+      document.getElementById("m-rate").textContent = rate + "%";
+      var hs = d.health_score != null ? Number(d.health_score).toFixed(1) : "0.0";
+      document.getElementById("m-health").textContent = hs;
+      var ring = document.getElementById("health-ring");
+      var ringLabel = document.getElementById("health-ring-label");
+      var hp = d.health_score != null ? Math.max(0, Math.min(100, Number(d.health_score))) : 0;
+      ring.style.setProperty("--p", String(hp));
+      ringLabel.textContent = d.health_score != null ? Math.round(hp) + "%" : "0%";
+      var cov = d.coverage != null ? Number(d.coverage).toFixed(1) + "%" : "0.0%";
+      document.getElementById("m-cov").textContent = cov;
+      var covEl = document.getElementById("cov-metric");
+      if (d.coverage != null && Number(d.coverage) < 70) covEl.classList.add("coverage-warn");
+      else covEl.classList.remove("coverage-warn");
+      var crit = d.critical_failures != null ? String(d.critical_failures) : "0";
+      document.getElementById("m-crit").textContent = crit;
+      var a11y = d.accessibility_score != null ? Number(d.accessibility_score).toFixed(1) + "%" : "0.0%";
+      document.getElementById("m-a11y").textContent = a11y;
+      var sec = d.security_score != null ? Number(d.security_score).toFixed(1) + "%" : "0.0%";
+      document.getElementById("m-sec").textContent = sec;
+      document.getElementById("m-perf").textContent = d.performance_score != null ? Number(d.performance_score).toFixed(1) : "0.0";
+      var s = d.summary || {};
+      document.getElementById("m-pages-disc").textContent =
+        s.total_pages_discovered != null
+          ? s.total_pages_discovered
+          : d.total_pages_discovered != null
+            ? d.total_pages_discovered
+            : 0;
+      document.getElementById("m-pages-vis").textContent =
+        s.total_pages_visited != null
+          ? s.total_pages_visited
+          : d.total_pages_visited != null
+            ? d.total_pages_visited
+            : 0;
+      document.getElementById("m-pages-fail").textContent =
+        s.failed_pages != null
+          ? s.failed_pages
+          : d.failed_pages != null
+            ? d.failed_pages
+            : 0;
+      var ep = document.getElementById("enterprise-panel");
+      ep.style.display = "block";
+      var fl = document.getElementById("flows-list");
+      fl.innerHTML = "";
+      (d.user_flows_tested || []).forEach(function (f) {
+        var st = f.status === "passed" ? "✓" : "✗";
+        fl.innerHTML += "<li>" + escHtml(st + " " + (f.flow_type || "flow") + ": " + (f.name || "")) + "</li>";
+      });
+      if (!d.user_flows_tested || !d.user_flows_tested.length) {
+        fl.innerHTML = "<li>—</li>";
+      }
+      document.getElementById("ent-a11y-line").textContent =
+        d.accessibility_score != null
+          ? "Composite pass rate for Accessibility category: " + Number(d.accessibility_score).toFixed(1) + "%"
+          : "Accessibility score: 0%";
+      var sw = document.getElementById("sec-warn-list");
+      sw.innerHTML = "";
+      (d.security_warnings || []).forEach(function (w) {
+        sw.innerHTML += "<li>" + escHtml((w.test || "") + ": " + (w.detail || "").slice(0, 160)) + "</li>";
+      });
+      if (!d.security_warnings || !d.security_warnings.length) {
+        sw.innerHTML = "<li>No security checks failed.</li>";
+      }
+      var pb = d.performance_breakdown || {};
+      document.getElementById("perf-breakdown").textContent =
+        "Avg crawl load: " +
+        (pb.crawl_avg_load_ms != null ? pb.crawl_avg_load_ms + " ms" : "0 ms") +
+        "\nSlowest (crawl): " +
+        (pb.crawl_slowest_ms != null ? pb.crawl_slowest_ms + " ms" : "0 ms") +
+        "\nPerformance score: " +
+        (pb.performance_score != null ? pb.performance_score : "0") +
+        (pb.measured_avg_ttfb_ms != null ? "\nAvg TTFB (measured): " + pb.measured_avg_ttfb_ms + " ms" : "");
+      var ib = document.getElementById("insights-box");
+      var il = document.getElementById("insights-list");
+      if (d.insights && d.insights.length) {
+        ib.style.display = "block";
+        il.innerHTML = d.insights.map(function (x) {
+          return "<li>" + escHtml(x) + "</li>";
+        }).join("");
+      } else {
+        ib.style.display = "none";
+        il.innerHTML = "";
+      }
+      document.getElementById("compare-panel").style.display = "none";
+      document.getElementById("link-tests").href = "/test-cases?run_id=" + rid;
+      document.getElementById("link-pages").href = "/pages?run_id=" + rid;
+      document.getElementById("link-viz").href = "/visualization?run_id=" + rid;
+      document.getElementById("link-report").href = "/report/" + rid;
+      document.getElementById("link-pdf").href = "/api/download-report/" + rid;
+
+      // Render actionable issues as interactive cards.
+      fetch("/api/runs/" + rid + "/issues")
+        .then(function (r) {
+          return r.json();
+        })
+        .then(function (payload) {
+          var wrap = document.getElementById("issue-cards-wrap");
+          if (!wrap) return;
+          wrap.style.display = "block";
+
+          var cCritical = document.getElementById("issue-cards-critical");
+          var cWarn = document.getElementById("issue-cards-warning");
+          var cPassed = document.getElementById("issue-cards-passed");
+          var emptyCritical = document.getElementById("issue-empty-critical");
+          var emptyWarn = document.getElementById("issue-empty-warning");
+
+          var criticalIssues = payload.criticalIssues || [];
+          var warningIssues = payload.warningIssues || [];
+          var passedTests = payload.passedTests || [];
+
+          if (cCritical) cCritical.innerHTML = "";
+          if (cWarn) cWarn.innerHTML = "";
+          if (cPassed) cPassed.innerHTML = "";
+
+          function cardHtml(issue, kind) {
+            var sevColor = kind === "critical" ? "#ef4444" : kind === "warning" ? "#f59e0b" : "#22c55e";
+            var bg = kind === "critical" ? "rgba(239,68,68,0.12)" : kind === "warning" ? "rgba(245,158,11,0.12)" : "rgba(34,197,94,0.10)";
+            var border = kind === "critical" ? "rgba(239,68,68,0.45)" : kind === "warning" ? "rgba(245,158,11,0.45)" : "rgba(34,197,94,0.35)";
+            var testId = issue.testId || issue.test_id || issue.id || "";
+            var scenario = issue.scenario || "";
+            var pageUrl = issue.pageUrl || issue.page || "";
+            return (
+              '<div class="issue-card" style="border:1px solid ' +
+              border +
+              "; background:" +
+              bg +
+              "; border-radius:14px; padding:0.85rem; cursor:pointer; transition: transform .2s ease, box-shadow .2s ease; box-shadow: 0 8px 20px rgba(0,0,0,0.15)\" data-testid=\"" +
+              escHtml(testId) +
+              "\">" +
+              "<div style=\"font-weight:800; color:" +
+              sevColor +
+              "; margin-bottom:0.35rem\">" +
+              (kind === "critical" ? "Critical" : kind === "warning" ? "Warning" : "Passed") +
+              "</div>" +
+              "<div style=\"font-weight:700; margin-bottom:0.35rem\">" +
+              escHtml(scenario) +
+              "</div>" +
+              "<div class=\"muted\" style=\"font-size:0.86rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-bottom:0.55rem\">" +
+              escHtml(pageUrl) +
+              "</div>" +
+              '<div style="display:flex; gap:0.5rem; align-items:center">' +
+              '<button type="button" class="btn btn-secondary" style="padding:0.45rem 0.75rem; background: rgba(15,23,42,0.8); border:1px solid rgba(148,163,184,0.25); box-shadow:none; color:#cbd5e1">🔧 Fix Now</button>' +
+              "</div>" +
+              "</div>"
+            );
+          }
+
+          function wireCardClicks(container, kind) {
+            if (!container) return;
+            container.querySelectorAll(".issue-card").forEach(function (card) {
+              card.addEventListener("click", function () {
+                var testId = card.getAttribute("data-testid") || "";
+                window.location.href = "/test-cases?run_id=" + rid + "&highlight=" + encodeURIComponent(testId);
+              });
+            });
+          }
+
+          if (cCritical) {
+            if (criticalIssues.length) cCritical.innerHTML = criticalIssues.map(function (i) { return cardHtml(i, "critical"); }).join("");
+            emptyCritical.style.display = criticalIssues.length ? "none" : "block";
+            wireCardClicks(cCritical, "critical");
+          }
+          if (cWarn) {
+            if (warningIssues.length) cWarn.innerHTML = warningIssues.map(function (i) { return cardHtml(i, "warning"); }).join("");
+            emptyWarn.style.display = warningIssues.length ? "none" : "block";
+            wireCardClicks(cWarn, "warning");
+          }
+          if (cPassed) {
+            if (passedTests.length) cPassed.innerHTML = passedTests.map(function (i) { return cardHtml(i, "passed"); }).join("");
+            wireCardClicks(cPassed, "passed");
+          }
+        })
+        .catch(function () {});
+
+      var logs = (d.summary && d.summary.crawl_logs) ? d.summary.crawl_logs : [];
+      if (logs.length) {
+        logWrap.style.display = "block";
+        logPre.textContent = logs.join("\n");
+      }
+      document.getElementById("btn-compare").onclick = function () {
+        var panel = document.getElementById("compare-panel");
+        panel.style.display = "block";
+        panel.innerHTML = "Loading…";
+        fetch("/api/compare-runs/" + rid)
+          .then(function (res) {
+            return res.json();
+          })
+          .then(function (c) {
+            panel.innerHTML = renderComparePanel(c);
+          })
+          .catch(function () {
+            panel.textContent = "Compare request failed.";
+          });
+      };
+      refreshGlobalAlert(document.getElementById("global-alert"));
+    }
+
+    var form = document.getElementById("run-form");
+    var loading = document.getElementById("loading");
+    var err = document.getElementById("error");
+    var summary = document.getElementById("summary");
+    var progress = document.getElementById("progress");
+    var btn = document.getElementById("btn-run");
+    var loadStatus = document.getElementById("loading-status");
+    var crawlCounter = document.getElementById("crawl-counter");
+    var logWrap = document.getElementById("crawl-log-wrap");
+    var logPre = document.getElementById("crawl-logs");
+    var modeEl = document.getElementById("crawl_mode");
+    var fullWarn = document.getElementById("full-mode-warning");
+
+    function bootstrapLatestRun() {
+      if (!(window.AutoQA && window.AutoQA.ensureRunId)) return;
+      window.AutoQA.ensureRunId().then(function (rid) {
+        if (!rid) return;
+        fetch("/api/runs/" + rid)
+          .then(function (r) { return r.json(); })
+          .then(function (runRow) {
+            if (runRow && runRow.id) hydrateDashboard(runRow, rid);
+          })
+          .catch(function () {});
+      });
+    }
+
+    document.addEventListener("DOMContentLoaded", function () {
+      refreshGlobalAlert(document.getElementById("global-alert"));
+      function updateWarn() {
+        fullWarn.style.display = modeEl.value === "full" ? "block" : "none";
+      }
+      modeEl.addEventListener("change", updateWarn);
+      updateWarn();
+      bootstrapLatestRun();
+    });
+
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      err.style.display = "none";
+      document.getElementById("success").style.display = "none";
+      summary.style.display = "none";
+      loading.classList.add("active");
+      btn.disabled = true;
+      progress.style.width = "5%";
+      if (loadStatus) loadStatus.textContent = "Starting…";
+
+      var payload = {
+        url: document.getElementById("url").value.trim(),
+        test_type: "all",
+        crawl_mode: document.getElementById("crawl_mode").value,
+      };
+      var mp = document.getElementById("max_pages").value.trim();
+      if (mp !== "") {
+        var n = parseInt(mp, 10);
+        if (!isNaN(n)) payload.max_pages = n;
+      }
+      var wh = document.getElementById("webhook_url").value.trim();
+      if (wh) payload.webhook_url = wh;
+
+      var headers = { "Content-Type": "application/json" };
+      var ak = document.getElementById("api_key").value.trim();
+      if (ak) headers["X-API-Key"] = ak;
+
+      var pollTimer = null;
+
+      function finishLoad() {
+        loading.classList.remove("active");
+        btn.disabled = false;
+        if (pollTimer) clearInterval(pollTimer);
+      }
+
+      function updateProgressFromStatus(st) {
+        var pct = st.percent != null ? Math.min(100, Math.max(0, Number(st.percent))) : 0;
+        progress.style.width = pct + "%";
+        var phase = st.phase || "";
+        var cur = st.current != null ? st.current : 0;
+        var tot = st.total != null ? st.total : 0;
+        var msg = st.message || "";
+        if (phase === "execute" && tot > 0) {
+          if (loadStatus) {
+            loadStatus.textContent =
+              "Running tests… " + cur + "/" + tot + " (" + Math.round((100 * cur) / tot) + "%)";
+          }
+        } else if (loadStatus) {
+          loadStatus.textContent = msg || phase || "Working…";
+        }
+      }
+
+      function updateCrawlProgress(runId) {
+        fetch("/api/progress/" + runId)
+          .then(function (r) { return r.json(); })
+          .then(function (cp) {
+            if (!cp || cp.error) return;
+            if (cp.discovered > 0) {
+              crawlCounter.textContent = cp.visited + " / " + cp.discovered + " pages completed (" + Number(cp.progress || 0).toFixed(0) + "%) · failed: " + cp.failed;
+            }
+            if (cp.phase === "crawl") {
+              progress.style.width = Math.min(95, Math.max(Number(cp.progress || 0), 1)) + "%";
+              if (loadStatus) loadStatus.textContent = "Crawling website...";
+            }
+            if (cp.logs && cp.logs.length) {
+              logWrap.style.display = "block";
+              logPre.textContent = cp.logs.join("\n");
+            }
+          })
+          .catch(function () {});
+      }
+
+      fetch("/api/run-full-test-async", {
+        method: "POST",
+        headers: headers,
+        body: JSON.stringify(payload),
+      })
+        .then(function (res) {
+          return res.json().then(function (data) {
+            return { ok: res.ok, status: res.status, data: data };
+          });
+        })
+        .then(function (r) {
+          if (!r.ok) {
+            finishLoad();
+            progress.style.width = "0%";
+            err.textContent = r.data.error || "Request failed (" + r.status + ")";
+            err.style.display = "block";
+            return;
+          }
+          var runId = r.data.run_id;
+          crawlCounter.textContent = "";
+          logWrap.style.display = "none";
+          logPre.textContent = "";
+          pollTimer = setInterval(function () {
+            fetch("/api/runs/" + runId + "/execution-status")
+              .then(function (x) {
+                return x.json();
+              })
+              .then(function (st) {
+                if (!st || st.error) return;
+                updateProgressFromStatus(st);
+                if (st.status === "failed") {
+                  finishLoad();
+                  progress.style.width = "0%";
+                  err.textContent = st.error || "QA run failed.";
+                  err.style.display = "block";
+                } else if (st.status === "completed") {
+                  finishLoad();
+                  progress.style.width = "100%";
+                  fetch("/api/runs/" + runId)
+                    .then(function (x) {
+                      return x.json();
+                    })
+                    .then(function (runRow) {
+                      if (!runRow || !runRow.id) {
+                        hydrateDashboard(emptyRunPayload(runId), runId);
+                        return;
+                      }
+                      hydrateDashboard(runRow, runId);
+                    })
+                    .catch(function () {
+                      hydrateDashboard(emptyRunPayload(runId), runId);
+                    });
+                }
+              })
+              .catch(function () {});
+            updateCrawlProgress(runId);
+          }, 2200);
+        })
+        .catch(function () {
+          finishLoad();
+          err.textContent = "Network error or server unavailable.";
+          err.style.display = "block";
+        });
+    });
+  })();
+</script>
+{% endblock %}

@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}Pages — AutoQA Pro{% endblock %}
+{% block content %}
+<h1>Pages</h1>
+<p class="lead">Page-level crawl diagnostics, performance issues, and visual regression details.</p>
+
+<div id="banner" class="alert" style="display:none"></div>
+
+<div class="metrics" id="page-kpis" style="display:none">
+  <div class="metric"><div class="k">Discovered</div><div class="v" id="k-discovered">0</div></div>
+  <div class="metric"><div class="k">Visited</div><div class="v" id="k-visited">0</div></div>
+  <div class="metric fail"><div class="k">Failed pages</div><div class="v" id="k-failed-pages">0</div></div>
+  <div class="metric"><div class="k">Skipped</div><div class="v" id="k-skipped-pages">0</div></div>
+  <div class="metric"><div class="k">Performance</div><div class="v" id="k-perf">—</div></div>
+</div>
+
+<div class="card">
+  <div class="table-wrap table-sticky-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>URL</th>
+          <th>Status</th>
+          <th>Response</th>
+          <th>Perf Score</th>
+          <th>Issues</th>
+          <th>Visual Diff</th>
+        </tr>
+      </thead>
+      <tbody id="pages-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<div id="page-detail" class="insights-box" style="display:none"></div>
+{% endblock %}
+{% block scripts %}
+<script>
+  (function () {
+    function esc(s) {
+      return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+    function toWebPath(p) {
+      var raw = String(p || "");
+      if (!raw) return "";
+      var n = raw.replace(/\\/g, "/");
+      var idx = n.toLowerCase().indexOf("/static/");
+      return idx >= 0 ? n.slice(idx) : "";
+    }
+    function statusBadge(s) {
+      var t = String(s || "").toLowerCase();
+      if (t === "success") return '<span class="badge badge-pass">success</span>';
+      if (t === "failed") return '<span class="badge badge-fail">failed</span>';
+      return '<span class="badge badge-sev-medium">slow</span>';
+    }
+    var banner = document.getElementById("banner");
+    function loadWithRun(runId) {
+      if (!runId) {
+        banner.style.display = "block";
+        banner.textContent = "No run selected. Open a run from Dashboard or History.";
+        return;
+      }
+      Promise.all([
+      fetch("/api/run/" + runId).then(function (r) { return r.json(); }),
+      fetch("/api/pages/" + runId).then(function (r) { return r.json(); }),
+      fetch("/api/visual/" + runId).then(function (r) { return r.json(); }),
+      ]).then(function (parts) {
+      var run = parts[0] || {};
+      var pages = (parts[1] && parts[1].pages) || [];
+      var visual = (parts[2] && parts[2].visual_tests) || [];
+      var vmap = {};
+      visual.forEach(function (v) { vmap[v.page_url] = v; });
+      document.getElementById("page-kpis").style.display = "grid";
+      document.getElementById("k-discovered").textContent = run.summary && run.summary.total_pages_discovered != null ? run.summary.total_pages_discovered : "—";
+      document.getElementById("k-visited").textContent = run.summary && run.summary.total_pages_visited != null ? run.summary.total_pages_visited : "—";
+      document.getElementById("k-failed-pages").textContent = run.summary && run.summary.failed_pages != null ? run.summary.failed_pages : "—";
+      document.getElementById("k-skipped-pages").textContent = run.summary && run.summary.skipped_pages != null ? run.summary.skipped_pages : "—";
+      document.getElementById("k-perf").textContent = run.performance_score != null ? Number(run.performance_score).toFixed(1) : "—";
+      var tbody = document.getElementById("pages-tbody");
+      tbody.innerHTML = "";
+      if (!pages.length) {
+        var trEmpty = document.createElement("tr");
+        trEmpty.innerHTML = '<td colspan="6" style="color:#94a3b8">No pages captured for this run yet.</td>';
+        tbody.appendChild(trEmpty);
+      }
+      pages.forEach(function (p) {
+        var tr = document.createElement("tr");
+        tr.style.cursor = "pointer";
+        var vv = vmap[p.page_url] || {};
+        tr.innerHTML =
+          "<td>" + esc(p.page_url) + "</td>" +
+          "<td>" + statusBadge(p.load_status) + "</td>" +
+          "<td>" + esc(Number(p.response_time_ms || 0).toFixed(0)) + " ms</td>" +
+          "<td>" + (p.performance_score != null ? esc(Number(p.performance_score).toFixed(1)) : "—") + "</td>" +
+          "<td>" + esc((p.issues || []).length) + "</td>" +
+          "<td>" + (vv.mismatch_percent != null ? esc(Number(vv.mismatch_percent).toFixed(2)) + "%" : "—") + "</td>";
+        tr.addEventListener("click", function () {
+          var d = document.getElementById("page-detail");
+          d.style.display = "block";
+          var issues = (p.issues || []).map(function (x) { return "<li>" + esc((x.issue || "") + " (" + (x.severity || "") + ")") + "</li>"; }).join("") || "<li>None</li>";
+          var sugg = (p.suggestions || []).map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") || "<li>None</li>";
+          var errs = (p.js_errors || []).map(function (x) { return "<li>" + esc(x.slice(0, 200)) + "</li>"; }).join("") || "<li>None</li>";
+          var shot = p.screenshot ? '<img class="screenshot-thumb" src="' + esc(p.screenshot) + '" alt="page screenshot" />' : "";
+          var vb = toWebPath(vv.baseline_path);
+          var vc = toWebPath(vv.current_path);
+          var vd = toWebPath(vv.diff_path);
+          var diffView = (vb || vc || vd)
+            ? "<div class='row'><div style='flex:1'><strong>Baseline</strong><br/>" + (vb ? ("<img class='screenshot-thumb' src='" + esc(vb) + "' alt='baseline' />") : "—") + "</div>"
+              + "<div style='flex:1'><strong>Current</strong><br/>" + (vc ? ("<img class='screenshot-thumb' src='" + esc(vc) + "' alt='current' />") : "—") + "</div>"
+              + "<div style='flex:1'><strong>Diff</strong><br/>" + (vd ? ("<img class='screenshot-thumb' style='border-color: rgba(239,68,68,0.5)' src='" + esc(vd) + "' alt='diff' />") : "—") + "</div></div>"
+            : "";
+          d.innerHTML = "<h3 style='margin-top:0'>" + esc(p.page_url) + "</h3>"
+            + "<p><strong>Status:</strong> " + esc(p.load_status || "unknown") + " · <strong>Response:</strong> " + esc(Number(p.response_time_ms || 0).toFixed(0)) + " ms</p>"
+            + "<div class='row'><div style='flex:1'><strong>Screenshot</strong><br/>" + shot + "</div>"
+            + "<div style='flex:1'><strong>Performance</strong><pre>" + esc(JSON.stringify(p.performance || {}, null, 2)) + "</pre></div></div>"
+            + "<div class='row'><div style='flex:1'><strong>Issues</strong><ul>" + issues + "</ul></div>"
+            + "<div style='flex:1'><strong>Suggestions</strong><ul>" + sugg + "</ul></div></div>"
+            + "<strong>Errors</strong><ul>" + errs + "</ul>"
+            + diffView;
+        });
+        tbody.appendChild(tr);
+      });
+      }).catch(function () {
+      banner.style.display = "block";
+      banner.textContent = "Failed to load pages data.";
+      });
+    }
+    if (window.AutoQA && window.AutoQA.ensureRunId) {
+      window.AutoQA.ensureRunId().then(function (rid) { loadWithRun(rid); });
+    } else {
+      loadWithRun(window.AutoQA && window.AutoQA.getRunId ? window.AutoQA.getRunId() : null);
+    }
+  })();
+</script>
+{% endblock %}

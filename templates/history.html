@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+{% block title %}Test History — AutoQA Pro{% endblock %}
+{% block content %}
+<h1>Test History</h1>
+<p class="lead">All stored runs. Click a row to open details or jump to charts and cases. Use Compare for regression deltas.</p>
+
+<div class="row" style="margin: 0.75rem 0 1rem">
+  <button type="button" class="btn btn-secondary" id="btn-clear-all-runs">Clear All Runs</button>
+</div>
+
+<div id="clear-all-backdrop" class="modal-backdrop" role="dialog" aria-modal="true" aria-label="Confirm clear all runs" style="display:none">
+  <div class="modal-panel">
+    <button type="button" class="modal-close" id="clear-all-close">Close</button>
+    <h2 style="margin:0 0 0.75rem; font-size:1.05rem">Clear all run history?</h2>
+    <p class="muted" style="margin:0 0 1rem; font-size:0.92rem">This deletes stored runs, test cases, page audits, and visual test metadata from the local database.</p>
+    <div class="row" style="justify-content:flex-end; gap:0.75rem">
+      <button type="button" class="btn btn-secondary" id="clear-all-cancel">Cancel</button>
+      <button type="button" class="btn" id="clear-all-confirm" style="background: linear-gradient(135deg, rgba(239,68,68,0.95), rgba(244,63,94,0.65))">Yes, clear</button>
+    </div>
+  </div>
+</div>
+
+<div id="compare-backdrop" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="compare-modal-title">
+  <div class="modal-panel">
+    <button type="button" class="modal-close" id="compare-modal-close">Close</button>
+    <h2 id="compare-modal-title" style="margin: 0 0 0.75rem; font-size: 1.1rem">Compare runs</h2>
+    <div id="compare-modal-body" style="color: var(--muted); font-size: 0.9rem"></div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>URL</th>
+          <th>Time (UTC)</th>
+          <th>Total</th>
+          <th>Passed</th>
+          <th>Failed</th>
+          <th>Success %</th>
+          <th>Health</th>
+          <th>Performance</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  function fmtMetricDelta(delta, higherIsBetter) {
+    if (delta == null || isNaN(Number(delta))) return "";
+    var n = Number(delta);
+    var sym = n > 0 ? "↑" : n < 0 ? "↓" : "→";
+    var good = higherIsBetter ? n >= 0 : n <= 0;
+    var cls = good ? "compare-good" : "compare-bad";
+    return ' <span class="' + cls + '">' + sym + " " + Math.abs(n).toFixed(2) + "</span>";
+  }
+
+  function renderCompareHtml(c) {
+    if (c.error) return esc(c.error);
+    var delta = c.delta;
+    var fcls = delta > 0 ? "compare-bad" : delta < 0 ? "compare-good" : "";
+    var fsign = delta > 0 ? "+" : "";
+    var html = "<p><strong>vs run #" + esc(c.previous_run_id != null ? c.previous_run_id : "?") + "</strong></p>";
+    html +=
+      '<p class="' +
+      fcls +
+      '">Failures: ' +
+      esc(c.previous_failed) +
+      " → " +
+      esc(c.current_failed) +
+      " (" +
+      fsign +
+      esc(delta) +
+      ")</p>";
+    var pr = c.pass_rate || {};
+    html +=
+      "<p>Pass rate: " +
+      (pr.previous != null ? esc(pr.previous) + "%" : "—") +
+      " → " +
+      (pr.current != null ? esc(pr.current) + "%" : "—") +
+      fmtMetricDelta(pr.delta, true) +
+      "</p>";
+    var cov = c.coverage || {};
+    html +=
+      "<p>Coverage: " +
+      (cov.previous != null ? esc(cov.previous) + "%" : "—") +
+      " → " +
+      (cov.current != null ? esc(cov.current) + "%" : "—") +
+      fmtMetricDelta(cov.delta, true) +
+      "</p>";
+    var perf = c.performance_score || {};
+    html +=
+      "<p>Performance score: " +
+      (perf.previous != null ? esc(perf.previous) : "—") +
+      " → " +
+      (perf.current != null ? esc(perf.current) : "—") +
+      fmtMetricDelta(perf.delta, true) +
+      "</p>";
+    html +=
+      "<p><em>Regressions:</em> " +
+      (c.regressions || c.new_issues || []).length +
+      " · <em>Improvements:</em> " +
+      (c.improvements || c.fixed_issues || []).length +
+      "</p>";
+    if (c.visual_changes) {
+      var vd = c.visual_changes.delta;
+      html +=
+        "<p>Visual failed diffs: " +
+        (c.visual_changes.previous_failed == null ? "—" : c.visual_changes.previous_failed) +
+        " → " +
+        c.visual_changes.current_failed +
+        " (" +
+        (vd > 0 ? "+" : "") +
+        vd +
+        ")</p>";
+    }
+    return html;
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
+    var backdrop = document.getElementById("compare-backdrop");
+    var modalBody = document.getElementById("compare-modal-body");
+    document.getElementById("compare-modal-close").addEventListener("click", function () {
+      backdrop.classList.remove("open");
+    });
+    backdrop.addEventListener("click", function (e) {
+      if (e.target === backdrop) backdrop.classList.remove("open");
+    });
+
+    var clearBackdrop = document.getElementById("clear-all-backdrop");
+    var clearClose = document.getElementById("clear-all-close");
+    var clearCancel = document.getElementById("clear-all-cancel");
+    var clearConfirm = document.getElementById("clear-all-confirm");
+    var clearBtn = document.getElementById("btn-clear-all-runs");
+
+    if (clearBtn && clearBackdrop) {
+      clearBtn.addEventListener("click", function () {
+        clearBackdrop.classList.add("open");
+      });
+    }
+    if (clearClose) {
+      clearClose.addEventListener("click", function () {
+        if (clearBackdrop) clearBackdrop.classList.remove("open");
+      });
+    }
+    if (clearCancel) {
+      clearCancel.addEventListener("click", function () {
+        if (clearBackdrop) clearBackdrop.classList.remove("open");
+      });
+    }
+    if (clearBackdrop) {
+      clearBackdrop.addEventListener("click", function (e) {
+        if (e.target === clearBackdrop) clearBackdrop.classList.remove("open");
+      });
+    }
+
+    if (clearConfirm) {
+      clearConfirm.addEventListener("click", function () {
+        if (!clearBackdrop) return;
+        clearBackdrop.classList.remove("open");
+        fetch("/api/runs", { method: "DELETE" })
+          .then(function (r) { return r.json(); })
+          .then(function () {
+            var tbody = document.getElementById("tbody");
+            if (tbody) tbody.innerHTML = "";
+          })
+          .catch(function () {});
+      });
+    }
+
+    fetch("/api/runs")
+      .then(function (r) {
+        return r.json();
+      })
+      .then(function (data) {
+        var tbody = document.getElementById("tbody");
+        tbody.innerHTML = "";
+        (data.runs || []).forEach(function (run) {
+          var tr = document.createElement("tr");
+          var id = run.id;
+          tr.style.cursor = "pointer";
+          tr.innerHTML =
+            "<td>" +
+            id +
+            "</td>" +
+            "<td>" +
+            esc(run.url) +
+            "</td>" +
+            "<td>" +
+            esc(run.timestamp) +
+            "</td>" +
+            "<td>" +
+            esc(run.total) +
+            "</td>" +
+            "<td>" +
+            esc(run.passed) +
+            "</td>" +
+            "<td>" +
+            esc(run.failed) +
+            "</td>" +
+            "<td>" +
+            (run.success_rate != null ? Number(run.success_rate).toFixed(1) : "0") +
+            "%</td>" +
+            "<td>" +
+            (run.health_score != null ? Number(run.health_score).toFixed(1) : "—") +
+            "</td>" +
+            "<td>" +
+            (run.performance_score != null ? Number(run.performance_score).toFixed(1) : "—") +
+            "</td>" +
+            '<td><a href="/report/' +
+            id +
+            '">Report</a> · <a href="/test-cases?run_id=' +
+            id +
+            '">Cases</a> · <a href="/visualization?run_id=' +
+            id +
+            '">Charts</a> · <a href="/api/download-report/' +
+            id +
+            '">PDF</a> · <a href="#" class="js-compare" data-run="' +
+            id +
+            '">Compare</a> · <button type="button" class="js-delete-run" data-run="' +
+            id +
+            '" style="background: rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.35); color:#fecaca; padding:0.35rem 0.6rem; border-radius:8px; cursor:pointer">🗑</button></td>';
+
+          tr.addEventListener("click", function (e) {
+            if (e.target && e.target.classList && e.target.classList.contains("js-compare")) {
+              e.preventDefault();
+              e.stopPropagation();
+              var rid = e.target.getAttribute("data-run");
+              modalBody.innerHTML = "Loading…";
+              backdrop.classList.add("open");
+              fetch("/api/compare-runs/" + rid)
+                .then(function (r) {
+                  return r.json();
+                })
+                .then(function (c) {
+                  modalBody.innerHTML = renderCompareHtml(c);
+                })
+                .catch(function () {
+                  modalBody.textContent = "Compare request failed.";
+                });
+              return;
+            }
+            if (e.target && e.target.classList && e.target.classList.contains("js-delete-run")) {
+              e.preventDefault();
+              e.stopPropagation();
+              var ridDel = e.target.getAttribute("data-run");
+              fetch("/api/runs/" + ridDel, { method: "DELETE" })
+                .then(function (r) { return r.json(); })
+                .then(function () {
+                  var row = e.target.closest("tr");
+                  if (row) row.remove();
+                })
+                .catch(function () {});
+              return;
+            }
+            if (e.target && e.target.tagName === "A") return;
+            if (window.AutoQA && window.AutoQA.setRunId) window.AutoQA.setRunId(id);
+            window.location.href = "/test-cases?run_id=" + id;
+          });
+
+          tbody.appendChild(tr);
+        });
+      });
+  });
+</script>
+{% endblock %}

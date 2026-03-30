@@ -1,0 +1,289 @@
+{% extends "base.html" %}
+{% block title %}Data Visualization — AutoQA Pro{% endblock %}
+{% block head_extra %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+{% endblock %}
+{% block content %}
+<h1>Data Visualization</h1>
+<p class="lead">Charts for the selected run and historical pass-rate trend.</p>
+
+<div id="banner" class="alert" style="display: none"></div>
+
+<div class="metrics" id="kpis" style="display: none">
+  <div class="metric"><div class="k">Health score</div><div class="v health-hero" id="kpi-health">0</div></div>
+  <div class="metric" id="kpi-cov-box"><div class="k">Coverage</div><div class="v" id="kpi-cov">0%</div></div>
+  <div class="metric"><div class="k">Total tests</div><div class="v" id="kpi-total">0</div></div>
+  <div class="metric pass"><div class="k">Pass rate</div><div class="v" id="kpi-rate">0%</div></div>
+  <div class="metric fail"><div class="k">Critical failures</div><div class="v" id="kpi-crit">0</div></div>
+  <div class="metric"><div class="k">Accessibility</div><div class="v" id="kpi-a11y">0%</div></div>
+  <div class="metric"><div class="k">Security</div><div class="v" id="kpi-sec">0%</div></div>
+</div>
+
+<div class="charts-grid">
+  <div class="chart-box">
+    <canvas id="chart-pie"></canvas>
+  </div>
+  <div class="chart-box">
+    <canvas id="chart-bar"></canvas>
+  </div>
+  <div class="chart-box">
+    <canvas id="chart-sev"></canvas>
+  </div>
+  <div class="chart-box">
+    <canvas id="chart-coverage"></canvas>
+  </div>
+  <div class="chart-box">
+    <canvas id="chart-heatmap"></canvas>
+  </div>
+  <div class="chart-box">
+    <canvas id="chart-perf-trend"></canvas>
+  </div>
+  <div class="chart-box" style="grid-column: 1 / -1">
+    <canvas id="chart-line"></canvas>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    function start() {
+    var runId = window.AutoQA && window.AutoQA.getRunId ? window.AutoQA.getRunId() : null;
+    var banner = document.getElementById("banner");
+    if (!runId) {
+      banner.style.display = "block";
+      banner.textContent = "No run selected. Choose a run from History or run a new test.";
+      return;
+    }
+
+    function parseCharts(run) {
+      try {
+        return JSON.parse(run.charts_json || "{}");
+      } catch (e) {
+        return {};
+      }
+    }
+    function makeGrad(canvas, c1, c2) {
+      var ctx = canvas.getContext("2d");
+      var g = ctx.createLinearGradient(0, 0, 0, 260);
+      g.addColorStop(0, c1);
+      g.addColorStop(1, c2);
+      return g;
+    }
+    function chartUxOpts(title, yMax) {
+      return {
+        animation: { duration: 800, easing: "easeOutQuart" },
+        plugins: {
+          title: { display: true, text: title, color: "#cbd5e1" },
+          tooltip: {
+            backgroundColor: "rgba(15,23,42,0.95)",
+            borderColor: "rgba(99,102,241,0.45)",
+            borderWidth: 1,
+            titleColor: "#e2e8f0",
+            bodyColor: "#cbd5e1",
+            padding: 10,
+          },
+          legend: { labels: { color: "#cbd5e1" } },
+        },
+        scales: {
+          x: { ticks: { color: "#94a3b8" }, grid: { color: "rgba(148,163,184,0.12)" } },
+          y: { beginAtZero: true, max: yMax || undefined, ticks: { color: "#94a3b8", precision: 0 }, grid: { color: "rgba(148,163,184,0.12)" } },
+        },
+      };
+    }
+
+    Promise.all([
+      fetch("/api/runs/" + runId).then(function (r) {
+        return r.json();
+      }),
+      fetch("/api/runs/" + runId + "/tests").then(function (r) {
+        return r.json();
+      }),
+      fetch("/api/timeline").then(function (r) {
+        return r.json();
+      }),
+      fetch("/api/heatmap/" + runId).then(function (r) {
+        return r.json();
+      }),
+    ])
+      .then(function (parts) {
+        var run = parts[0];
+        var tdata = parts[1];
+        var tline = parts[2];
+        var heat = parts[3] && !parts[3].error ? parts[3] : { pages: [] };
+        if (!run || !run.id) {
+          banner.style.display = "block";
+          banner.textContent = "Run not found.";
+          return;
+        }
+
+        var charts = parseCharts(run);
+        var total = run.total || 0;
+        var passed = run.passed || 0;
+        var failed = run.failed || 0;
+        var rate = total ? ((passed / total) * 100).toFixed(1) : "0";
+        document.getElementById("kpis").style.display = "grid";
+        document.getElementById("kpi-total").textContent = total;
+        document.getElementById("kpi-rate").textContent = rate + "%";
+        var kh = run.health_score != null ? Number(run.health_score).toFixed(1) : "0.0";
+        document.getElementById("kpi-health").textContent = kh;
+        var kcov = run.coverage != null ? Number(run.coverage).toFixed(1) + "%" : "0.0%";
+        document.getElementById("kpi-cov").textContent = kcov;
+        var kbox = document.getElementById("kpi-cov-box");
+        if (run.coverage != null && Number(run.coverage) < 70) kbox.classList.add("coverage-warn");
+        else kbox.classList.remove("coverage-warn");
+
+        var crit = (tdata.test_cases || []).filter(function (x) {
+          return x.status === "failed" && (x.severity === "Critical" || x.priority === "Critical");
+        }).length;
+        document.getElementById("kpi-crit").textContent = crit;
+        document.getElementById("kpi-a11y").textContent =
+          run.accessibility_score != null ? Number(run.accessibility_score).toFixed(1) + "%" : "0.0%";
+        document.getElementById("kpi-sec").textContent =
+          run.security_score != null ? Number(run.security_score).toFixed(1) + "%" : "0.0%";
+
+        var pf = charts.pass_fail || { labels: ["Passed", "Failed"], data: [passed, failed] };
+        var pieLabels = (pf.labels || ["Passed", "Failed"]).slice(0, 2);
+        var pieData = (pf.data || [passed, failed]).slice(0, 2);
+
+        new Chart(document.getElementById("chart-pie"), {
+          type: "doughnut",
+          data: {
+            labels: pieLabels,
+            datasets: [{ data: pieData, backgroundColor: ["#22c55e", "#ef4444"], borderColor: "rgba(2,6,23,0.6)", borderWidth: 2 }],
+          },
+          options: chartUxOpts("Pass vs Fail"),
+        });
+
+        var tbc = charts.tests_by_category || { labels: [], data: [] };
+        new Chart(document.getElementById("chart-bar"), {
+          type: "bar",
+          data: {
+            labels: tbc.labels || [],
+            datasets: [
+              {
+                label: "Tests executed",
+                data: tbc.data || [],
+                backgroundColor: makeGrad(document.getElementById("chart-bar"), "rgba(99,102,241,0.95)", "rgba(99,102,241,0.35)"),
+              },
+            ],
+          },
+          options: chartUxOpts("Tests per category"),
+        });
+
+        var sd = charts.severity_distribution || { labels: [], data: [] };
+        var sevColors = ["#dc2626", "#ea580c", "#ca8a04", "#64748b"];
+        new Chart(document.getElementById("chart-sev"), {
+          type: "bar",
+          data: {
+            labels: sd.labels || [],
+            datasets: [
+              {
+                label: "Failed tests",
+                data: sd.data || [],
+                backgroundColor: (sd.labels || []).map(function (_, i) {
+                  return sevColors[i % sevColors.length];
+                }),
+              },
+            ],
+          },
+          options: chartUxOpts("Severity distribution (failures)"),
+        });
+
+        var cov = charts.coverage || { labels: ["Covered", "Gap"], data: [0, 100] };
+        new Chart(document.getElementById("chart-coverage"), {
+          type: "doughnut",
+          data: {
+            labels: cov.labels || ["Covered", "Gap"],
+            datasets: [
+              {
+                data: cov.data || [0, 0],
+                backgroundColor: ["#22c55e", "rgba(148, 163, 184, 0.35)"],
+              },
+            ],
+          },
+          options: chartUxOpts("Coverage vs gap (approx.)"),
+        });
+
+        var rows = (tline && tline.timeline) || [];
+        var tl = charts.timeline || {};
+        var labels = (tl.labels && tl.labels.length ? tl.labels : rows.map(function (r) { return (r.timestamp || "").slice(0, 19); }));
+        var vals = (tl.data && tl.data.length ? tl.data : rows.map(function (r) { return r.success_rate || 0; }));
+
+        new Chart(document.getElementById("chart-line"), {
+          type: "line",
+          data: {
+            labels: labels,
+            datasets: [
+              {
+                label: "Success % (stored runs)",
+                data: vals,
+                borderColor: "#6366f1",
+                backgroundColor: makeGrad(document.getElementById("chart-line"), "rgba(99,102,241,0.35)", "rgba(99,102,241,0.02)"),
+                tension: 0.25,
+                fill: true,
+              },
+            ],
+          },
+          options: chartUxOpts("Timeline — success rate", 100),
+        });
+
+        var pages = heat.pages || [];
+        var hLabels = pages.map(function (p) {
+          return (p.page || "").slice(0, 48) || "—";
+        });
+        var hData = pages.map(function (p) {
+          return p.failures || 0;
+        });
+        var hColors = pages.map(function (p) {
+          var b = (p.band || "low").toLowerCase();
+          if (b === "high") return "#dc2626";
+          if (b === "medium") return "#ea580c";
+          return "#22c55e";
+        });
+        new Chart(document.getElementById("chart-heatmap"), {
+          type: "bar",
+          data: {
+            labels: hLabels.length ? hLabels : ["No failures"],
+            datasets: [
+              {
+                label: "Failures per page",
+                data: hData.length ? hData : [0],
+                backgroundColor: hColors.length ? hColors : ["rgba(148, 163, 184, 0.35)"],
+              },
+            ],
+          },
+          options: chartUxOpts("Defect heatmap — failures by page"),
+        });
+
+        var pft = charts.performance_trend || { labels: [], data: [] };
+        new Chart(document.getElementById("chart-perf-trend"), {
+          type: "line",
+          data: {
+            labels: pft.labels || [],
+            datasets: [
+              {
+                label: "Performance score trend",
+                data: pft.data || [],
+                borderColor: "#22c55e",
+                backgroundColor: makeGrad(document.getElementById("chart-perf-trend"), "rgba(34,197,94,0.3)", "rgba(34,197,94,0.03)"),
+                tension: 0.25,
+                fill: true,
+              },
+            ],
+          },
+          options: chartUxOpts("Performance trend", 100),
+        });
+      })
+      .catch(function () {
+        banner.style.display = "block";
+        banner.textContent = "Failed to load visualization data.";
+      });
+    }
+    if (window.AutoQA && window.AutoQA.ensureRunId) {
+      window.AutoQA.ensureRunId().then(function () { start(); });
+    } else {
+      start();
+    }
+  });
+</script>
+{% endblock %}

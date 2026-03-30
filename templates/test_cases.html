@@ -1,0 +1,568 @@
+{% extends "base.html" %}
+{% block title %}Test Cases — AutoQA Pro{% endblock %}
+{% block content %}
+<h1>Test Cases</h1>
+<p class="lead">Structured cases with user stories, filters, and expandable evidence (steps, logs, screenshots).</p>
+
+<div id="banner" class="alert" style="display: none"></div>
+
+<div class="metrics" id="metrics" style="display: none">
+  <div class="metric"><div class="k">Total</div><div class="v" id="k-total">0</div></div>
+  <div class="metric pass"><div class="k">Passed</div><div class="v" id="k-pass">0</div></div>
+  <div class="metric fail"><div class="k">Failed</div><div class="v" id="k-fail">0</div></div>
+  <div class="metric"><div class="k">Running</div><div class="v" id="k-run">0</div></div>
+  <div class="metric"><div class="k">Success</div><div class="v" id="k-rate">0%</div></div>
+  <div class="metric" id="hdr-health-wrap"><div class="k">Health</div><div class="v" id="k-health">0%</div></div>
+  <div class="metric" id="hdr-cov-wrap"><div class="k">Coverage</div><div class="v" id="k-cov">0%</div></div>
+  <div class="metric"><div class="k">Accessibility</div><div class="v" id="k-a11y">0%</div></div>
+  <div class="metric"><div class="k">Security</div><div class="v" id="k-sec">0%</div></div>
+</div>
+
+<div class="card" style="margin-bottom: 1rem">
+  <div class="row" style="flex-wrap: wrap; gap: 0.75rem; align-items: flex-end">
+    <div>
+      <label for="f-search">Search</label>
+      <input type="search" id="f-search" placeholder="Story, scenario, name…" style="min-width: 220px" />
+    </div>
+    <div>
+      <label for="f-status">Status</label>
+      <select id="f-status">
+        <option value="">All</option>
+        <option value="passed">Passed</option>
+        <option value="failed">Failed</option>
+        <option value="pending">Pending</option>
+      </select>
+    </div>
+    <div>
+      <label for="f-sev">Severity</label>
+      <select id="f-sev">
+        <option value="">All</option>
+        <option value="Critical">Critical</option>
+        <option value="High">High</option>
+        <option value="Medium">Medium</option>
+        <option value="Low">Low</option>
+      </select>
+    </div>
+    <div>
+      <label for="f-cat">Category</label>
+      <select id="f-cat">
+        <option value="">All</option>
+        <option value="functional">functional</option>
+        <option value="validation">validation</option>
+        <option value="performance">performance</option>
+        <option value="security">security</option>
+        <option value="accessibility">accessibility</option>
+      </select>
+    </div>
+    <div class="muted" id="page-info" style="font-size: 0.9rem; margin-left: auto"></div>
+  </div>
+</div>
+
+<div id="shot-backdrop" class="modal-backdrop" role="dialog" aria-modal="true" aria-label="Failure screenshot">
+  <div class="modal-panel">
+    <button type="button" class="modal-close" id="shot-modal-close">Close</button>
+    <img id="shot-modal-img" src="" alt="Full failure screenshot" />
+  </div>
+</div>
+
+<div id="fix-backdrop" class="modal-backdrop" role="dialog" aria-modal="true" aria-label="Fix Now panel">
+  <div class="modal-panel" style="max-width: 900px">
+    <button type="button" class="modal-close" id="fix-modal-close">Close</button>
+    <div style="display:flex; gap:1rem; flex-wrap:wrap; align-items:flex-start">
+      <div style="flex: 1; min-width: 320px">
+        <div class="report-section-title" style="margin-bottom: 0.5rem">🔧 Fix Now</div>
+        <div id="fix-title" style="font-weight:700; margin-bottom:0.35rem"></div>
+        <div id="fix-meta" class="muted" style="font-size:0.88rem; margin-bottom:0.75rem"></div>
+        <div style="margin-bottom:0.75rem">
+          <strong>Steps</strong>
+          <ol id="fix-steps" style="margin:0.25rem 0 0 1.1rem; font-size:0.9rem; color: var(--text)"></ol>
+        </div>
+        <div class="grid-2" style="display:grid; grid-template-columns: 1fr 1fr; gap:0.75rem; margin-bottom:0.75rem">
+          <div>
+            <strong>Expected</strong>
+            <div id="fix-expected" class="evidence-box" style="max-height: 130px"></div>
+          </div>
+          <div>
+            <strong>Actual</strong>
+            <div id="fix-actual" class="evidence-box" style="max-height: 130px"></div>
+          </div>
+        </div>
+        <div style="margin-bottom:0.75rem">
+          <strong>Logs</strong>
+          <div id="fix-logs" class="evidence-box"><pre id="fix-logs-pre" style="margin:0"></pre></div>
+        </div>
+        <div style="margin-bottom:0.75rem">
+          <strong>AI Fix Suggestion</strong>
+          <div id="fix-suggestion" class="evidence-box"></div>
+        </div>
+        <div id="fix-element" class="muted" style="font-size:0.85rem; margin-top:0.4rem"></div>
+      </div>
+      <div style="flex: 0 0 340px">
+        <strong>Element highlight (evidence)</strong>
+        <div class="evidence-box" style="max-height: 360px; display:flex; align-items:center; justify-content:center">
+          <img id="fix-highlight-img" src="" alt="Element highlight evidence" style="max-width:100%; max-height:300px; border-radius:8px; display:none" />
+          <div id="fix-highlight-empty" class="muted" style="font-size:0.9rem">No highlight yet.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="table-wrap table-sticky-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th></th>
+          <th>User story</th>
+          <th>Scenario</th>
+          <th>Type</th>
+          <th>Status</th>
+          <th>Severity</th>
+          <th>Category</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+  <div class="row" style="justify-content: space-between; margin-top: 1rem; align-items: center">
+    <button type="button" class="btn btn-ghost" id="btn-prev">Previous</button>
+    <span class="muted" id="pager-label"></span>
+    <button type="button" class="btn btn-ghost" id="btn-next">Next</button>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  var ALL_ROWS = [];
+  var PAGE_SIZE = 15;
+  var PAGE = 0;
+  var RUN_ID = null;
+  var AUTO_OPEN_TEST_ID = null;
+  var AUTO_MODAL_OPENED = false;
+
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  function sevBadge(sev) {
+    if (!sev || sev === "None") return '<span class="badge badge-sev-none">—</span>';
+    var s = String(sev).toLowerCase();
+    var cls = "badge-sev-none";
+    if (s === "critical") cls = "badge-sev-critical";
+    else if (s === "high") cls = "badge-sev-high";
+    else if (s === "medium") cls = "badge-sev-medium";
+    else if (s === "low") cls = "badge-sev-low";
+    return '<span class="badge ' + cls + '">' + esc(sev || "—") + "</span>";
+  }
+
+  function statusIcon(st) {
+    if (st === "passed") return '<span title="Passed">✅</span>';
+    if (st === "failed") return '<span title="Failed">❌</span>';
+    return '<span title="Pending">⏳</span>';
+  }
+
+  function renderRow(tc) {
+    var tr = document.createElement("tr");
+    var testId = tc.test_id || tc.id || "";
+    if (testId) tr.setAttribute("data-testid", testId);
+    var us = tc.user_story || tc.name || "";
+    var sc = tc.scenario || tc.title || tc.name || "";
+    var tt = tc.test_type || "Positive";
+    var st = tc.status || "pending";
+    tr.innerHTML =
+      '<td><button class="expand-btn" type="button" aria-label="Expand">+</button></td>' +
+      "<td>" +
+      esc(us) +
+      "</td>" +
+      "<td>" +
+      esc(sc) +
+      "</td>" +
+      "<td>" +
+      esc(tt) +
+      "</td>" +
+      "<td>" +
+      statusIcon(st) +
+      "</td>" +
+      "<td>" +
+      sevBadge(tc.severity) +
+      "</td>" +
+      "<td>" +
+      esc(tc.category) +
+      "</td>" +
+      '<td><button type="button" class="btn btn-ghost js-view">View</button></td>';
+
+    var detail = document.createElement("tr");
+    detail.style.display = "none";
+    var td = document.createElement("td");
+    td.colSpan = 8;
+    var steps = (tc.steps || []).map(function (s) {
+      return "<li>" + esc(s) + "</li>";
+    });
+    var shotPath = tc.screenshot_path || tc.screenshot;
+    var img = shotPath
+      ? '<p><strong>Screenshot</strong></p><img class="screenshot-thumb js-shot-thumb" src="' +
+        esc(shotPath) +
+        '" alt="screenshot" data-full="' +
+        esc(shotPath) +
+        '" />'
+      : "";
+    var logs = (tc.logs || []).map(function (l) {
+      return "<li><code>" + esc(l) + "</code></li>";
+    });
+    var logBlock =
+      logs.length > 0
+        ? "<p><strong>Logs</strong></p><ul style=\"font-size:0.85rem\">" + logs.join("") + "</ul>"
+        : "";
+    var rc = tc.retry_count != null ? tc.retry_count : 0;
+    var retries = "<p><strong>Retries</strong> " + esc(String(rc)) + "</p>";
+    var exp = tc.expected_result != null ? tc.expected_result : tc.expected;
+    var act = tc.actual_result != null ? tc.actual_result : tc.actual;
+    var pg = tc.page ? "<p><strong>Page</strong><br/>" + esc(tc.page) + "</p>" : "";
+    var pcl = tc.page_class ? "<p><strong>Page class</strong> " + esc(tc.page_class) + "</p>" : "";
+    var comp = tc.component ? "<p><strong>Component</strong> " + esc(tc.component) + "</p>" : "";
+    var rca = tc.root_cause ? "<p><strong>AI root cause</strong><br/>" + esc(tc.root_cause) + "</p>" : "";
+    td.innerHTML =
+      '<div class="detail-panel">' +
+      pg +
+      pcl +
+      comp +
+      "<p><strong>Steps</strong></p><ol>" +
+      (steps.length ? steps.join("") : "<li>—</li>") +
+      "</ol>" +
+      retries +
+      (tc.element_selector ? "<p><strong>Failing element selector</strong><br/>" + esc(tc.element_selector) + "</p>" : "") +
+      "<p><strong>Expected</strong><br/>" +
+      esc(exp) +
+      "</p>" +
+      "<p><strong>Actual</strong><br/>" +
+      esc(act) +
+      "</p>" +
+      rca +
+      "<p><strong>Suggestion</strong><br/>" +
+      esc(tc.suggestion || "") +
+      "</p>" +
+      logBlock +
+      img +
+      (st === "failed"
+        ? '<div style="margin-top:0.75rem"><button type="button" class="btn js-fix-now" style="background: linear-gradient(135deg, rgba(239,68,68,0.95), rgba(244,63,94,0.65)); box-shadow: 0 12px 26px rgba(239,68,68,0.18)">🔧 Fix Now</button></div>'
+        : "") +
+      "</div>";
+    detail.appendChild(td);
+
+    if (AUTO_OPEN_TEST_ID && String(AUTO_OPEN_TEST_ID) === String(testId)) {
+      detail.style.display = "table-row";
+      tr.querySelector(".expand-btn").textContent = "−";
+      if (!AUTO_MODAL_OPENED) {
+        AUTO_MODAL_OPENED = true;
+        setTimeout(function () {
+          openFixModal(tc);
+        }, 120);
+      }
+    }
+
+    var fixBtn = td.querySelector(".js-fix-now");
+    if (fixBtn) {
+      fixBtn.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        openFixModal(tc);
+      });
+    }
+
+    tr.querySelector(".js-view").addEventListener("click", function () {
+      var open = detail.style.display === "none";
+      detail.style.display = open ? "table-row" : "none";
+      tr.querySelector(".expand-btn").textContent = open ? "−" : "+";
+    });
+
+    var thumb = td.querySelector(".js-shot-thumb");
+    if (thumb) {
+      thumb.addEventListener("click", function () {
+        var full = this.getAttribute("data-full") || this.src;
+        var bd = document.getElementById("shot-backdrop");
+        var im = document.getElementById("shot-modal-img");
+        im.src = full;
+        bd.classList.add("open");
+      });
+    }
+
+    tr.querySelector(".expand-btn").addEventListener("click", function () {
+      var open = detail.style.display === "none";
+      detail.style.display = open ? "table-row" : "none";
+      this.textContent = open ? "−" : "+";
+    });
+
+    return [tr, detail];
+  }
+
+  function openFixModal(tc) {
+    var bd = document.getElementById("fix-backdrop");
+    if (!bd) return;
+    bd.classList.add("open");
+
+    var testId = tc.test_id || tc.id || "";
+    document.getElementById("fix-title").textContent =
+      (tc.name || testId || "Issue") + " — " + (tc.scenario || tc.title || "");
+    document.getElementById("fix-meta").textContent =
+      "Page: " + (tc.page || "") + (tc.severity ? " · Severity: " + tc.severity : "");
+
+    var stepsEl = document.getElementById("fix-steps");
+    if (stepsEl) {
+      stepsEl.innerHTML = "";
+      (tc.steps || []).forEach(function (s) {
+        var li = document.createElement("li");
+        li.textContent = s;
+        stepsEl.appendChild(li);
+      });
+      if (!tc.steps || !tc.steps.length) stepsEl.innerHTML = "<li>—</li>";
+    }
+
+    var expEl = document.getElementById("fix-expected");
+    if (expEl) expEl.textContent = tc.expected_result || tc.expected || "";
+
+    var actEl = document.getElementById("fix-actual");
+    if (actEl) actEl.textContent = tc.actual_result || tc.actual || "";
+
+    var logsPre = document.getElementById("fix-logs-pre");
+    if (logsPre) {
+      var logs = tc.logs || [];
+      logsPre.textContent = logs.length ? logs.join("\n") : "—";
+    }
+
+    var sugEl = document.getElementById("fix-suggestion");
+    if (sugEl) sugEl.textContent = tc.suggestion || "";
+
+    var elInfo = document.getElementById("fix-element");
+    if (elInfo) {
+      elInfo.textContent = tc.element_selector
+        ? "Element selector: " + tc.element_selector
+        : "Element selector: —";
+    }
+
+    // Reset highlight UI first.
+    var img = document.getElementById("fix-highlight-img");
+    var empty = document.getElementById("fix-highlight-empty");
+    if (img) {
+      img.style.display = "none";
+      img.src = "";
+    }
+    if (empty) empty.style.display = "block";
+
+    // Generate highlight evidence (only when we have required inputs).
+    if (RUN_ID && tc.page && tc.element_selector) {
+      fetch("/api/issues/highlight", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          run_id: RUN_ID,
+          pageUrl: tc.page,
+          elementSelector: tc.element_selector,
+          testId: testId,
+        }),
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (res) {
+          if (!res || res.error) return;
+          if (img && res.screenshotUrl) {
+            img.src = res.screenshotUrl;
+            img.style.display = "block";
+          }
+          if (empty) empty.style.display = "none";
+        })
+        .catch(function () {});
+    }
+  }
+
+  function applyFilters() {
+    var q = (document.getElementById("f-search").value || "").toLowerCase();
+    var fs = document.getElementById("f-status").value;
+    var fv = document.getElementById("f-sev").value;
+    var fc = document.getElementById("f-cat").value.toLowerCase();
+    return ALL_ROWS.filter(function (tc) {
+      if (fs && (tc.status || "") !== fs) return false;
+      if (fv && (tc.severity || "") !== fv) return false;
+      if (fc && (tc.category || "").toLowerCase() !== fc) return false;
+      if (q) {
+        var blob = (
+          (tc.user_story || "") +
+          " " +
+          (tc.scenario || "") +
+          " " +
+          (tc.name || "") +
+          " " +
+          (tc.test_id || "")
+        ).toLowerCase();
+        if (blob.indexOf(q) < 0) return false;
+      }
+      return true;
+    });
+  }
+
+  function renderPage() {
+    var filtered = applyFilters();
+    var total = filtered.length;
+    var pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    if (PAGE >= pages) PAGE = pages - 1;
+    if (PAGE < 0) PAGE = 0;
+    var start = PAGE * PAGE_SIZE;
+    var slice = filtered.slice(start, start + PAGE_SIZE);
+    var tbody = document.getElementById("tbody");
+    tbody.innerHTML = "";
+    document.getElementById("page-info").textContent =
+      total ? "Showing " + (start + 1) + "–" + Math.min(start + PAGE_SIZE, total) + " of " + total : "0 results";
+    document.getElementById("pager-label").textContent = "Page " + (PAGE + 1) + " / " + pages;
+    if (!slice.length) {
+      var tr = document.createElement("tr");
+      tr.innerHTML = '<td colspan="8" style="color:#94a3b8">No matching test cases.</td>';
+      tbody.appendChild(tr);
+      return;
+    }
+    slice.forEach(function (tc) {
+      var rows = renderRow(tc);
+      tbody.appendChild(rows[0]);
+      tbody.appendChild(rows[1]);
+    });
+  }
+
+  function load() {
+    var runId = window.AutoQA && window.AutoQA.getRunId ? window.AutoQA.getRunId() : null;
+    var banner = document.getElementById("banner");
+    if (!runId) {
+      banner.style.display = "block";
+      banner.textContent = "No run selected. Run a test from the Dashboard or pick a run in History.";
+      return;
+    }
+
+    RUN_ID = runId;
+    AUTO_OPEN_TEST_ID = null;
+    var params = new URLSearchParams(window.location.search);
+    var hi = params.get("highlight");
+    if (hi) AUTO_OPEN_TEST_ID = hi;
+
+    // If we were navigated here for a specific highlight, clear filters so the row exists.
+    if (AUTO_OPEN_TEST_ID) {
+      var fsearch = document.getElementById("f-search");
+      var fstatus = document.getElementById("f-status");
+      var fsev = document.getElementById("f-sev");
+      var fcat = document.getElementById("f-cat");
+      if (fsearch) fsearch.value = "";
+      if (fstatus) fstatus.value = "";
+      if (fsev) fsev.value = "";
+      if (fcat) fcat.value = "";
+    }
+
+    fetch("/api/runs/" + runId)
+      .then(function (r) {
+        return r.json();
+      })
+      .then(function (run) {
+        if (!run || !run.id) {
+          banner.style.display = "block";
+          banner.textContent = "Run not found.";
+          return;
+        }
+        var total = run.total || 0;
+        var passed = run.passed || 0;
+        var failed = run.failed || 0;
+        var rate = total ? ((passed / total) * 100).toFixed(1) : "0.0";
+        document.getElementById("metrics").style.display = "grid";
+        document.getElementById("k-total").textContent = total;
+        document.getElementById("k-pass").textContent = passed;
+        document.getElementById("k-fail").textContent = failed;
+        document.getElementById("k-run").textContent = "0";
+        document.getElementById("k-rate").textContent = rate + "%";
+        document.getElementById("k-health").textContent =
+          run.health_score != null ? Number(run.health_score).toFixed(1) + "%" : "0.0%";
+        document.getElementById("k-cov").textContent =
+          run.coverage != null ? Number(run.coverage).toFixed(1) + "%" : "0.0%";
+        var cw = document.getElementById("hdr-cov-wrap");
+        if (run.coverage != null && Number(run.coverage) < 70) cw.classList.add("coverage-warn");
+        else cw.classList.remove("coverage-warn");
+        document.getElementById("k-a11y").textContent =
+          run.accessibility_score != null ? Number(run.accessibility_score).toFixed(1) + "%" : "0.0%";
+        document.getElementById("k-sec").textContent =
+          run.security_score != null ? Number(run.security_score).toFixed(1) + "%" : "0.0%";
+      });
+
+    fetch("/api/runs/" + runId + "/tests")
+      .then(function (r) {
+        return r.json();
+      })
+      .then(function (data) {
+        ALL_ROWS = data.test_cases || [];
+        if (AUTO_OPEN_TEST_ID) {
+          // Find the highlighted row index in the full (unfiltered) list.
+          var idx = ALL_ROWS.findIndex(function (t) {
+            return String(t.test_id || t.id || "") === String(AUTO_OPEN_TEST_ID);
+          });
+          if (idx >= 0) {
+            PAGE = Math.floor(idx / PAGE_SIZE);
+          }
+        }
+        renderPage();
+
+        if (AUTO_OPEN_TEST_ID) {
+          setTimeout(function () {
+            var tr = document.querySelector('tr[data-testid="' + String(AUTO_OPEN_TEST_ID) + '"]');
+            if (tr && tr.scrollIntoView) tr.scrollIntoView({ behavior: "smooth", block: "center" });
+          }, 200);
+        }
+      })
+      .catch(function () {
+        banner.style.display = "block";
+        banner.textContent = "Failed to load test cases.";
+      });
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
+    ["f-search", "f-status", "f-sev", "f-cat"].forEach(function (id) {
+      document.getElementById(id).addEventListener("input", function () {
+        PAGE = 0;
+        renderPage();
+      });
+      document.getElementById(id).addEventListener("change", function () {
+        PAGE = 0;
+        renderPage();
+      });
+    });
+    document.getElementById("btn-prev").addEventListener("click", function () {
+      PAGE--;
+      renderPage();
+    });
+    document.getElementById("btn-next").addEventListener("click", function () {
+      PAGE++;
+      renderPage();
+    });
+    if (window.AutoQA && window.AutoQA.ensureRunId) {
+      window.AutoQA.ensureRunId().then(function () {
+        load();
+      });
+    } else {
+      load();
+    }
+    var bd = document.getElementById("shot-backdrop");
+    document.getElementById("shot-modal-close").addEventListener("click", function () {
+      bd.classList.remove("open");
+    });
+    bd.addEventListener("click", function (e) {
+      if (e.target === bd) bd.classList.remove("open");
+    });
+
+    var fbd = document.getElementById("fix-backdrop");
+    var fclose = document.getElementById("fix-modal-close");
+    if (fclose && fbd) {
+      fclose.addEventListener("click", function () {
+        fbd.classList.remove("open");
+      });
+      fbd.addEventListener("click", function (e) {
+        if (e.target === fbd) fbd.classList.remove("open");
+      });
+    }
+  });
+</script>
+{% endblock %}

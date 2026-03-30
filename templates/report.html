@@ -1,0 +1,455 @@
+{% extends "base.html" %}
+{% block title %}Test Report — AutoQA Pro{% endblock %}
+{% block head_extra %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/report.css') }}" />
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+{% endblock %}
+{% block content %}
+<div id="report-root" data-run-id="{{ run_id }}">
+  <div class="report-hero">
+    <h1>Test report</h1>
+    <p class="report-meta" id="report-subtitle">Loading…</p>
+  </div>
+
+  <div class="report-toolbar">
+    <a class="btn" id="dl-pdf" href="#">Download PDF</a>
+    <a class="btn btn-secondary" id="dl-json" href="#">Export JSON</a>
+    <a class="btn btn-secondary" id="dl-csv" href="#">Export CSV</a>
+  </div>
+
+  <div class="report-grid" id="summary-cards"></div>
+
+  <div class="report-verdict" id="verdict-box">
+    <div>
+      <div class="report-section-title">Final recommendation</div>
+      <p id="verdict-label" style="margin: 0; font-size: 1.15rem; font-weight: 700">…</p>
+      <p id="verdict-detail" class="muted" style="margin: 0.5rem 0 0; font-size: 0.92rem"></p>
+      <ul id="verdict-blocking" style="margin: 0.75rem 0 0 1rem; color: #fca5a5; font-size: 0.88rem"></ul>
+      <ul id="verdict-improve" style="margin: 0.5rem 0 0 1rem; color: #a5b4fc; font-size: 0.88rem"></ul>
+    </div>
+  </div>
+
+  <h2 class="report-section-title">Visual overview</h2>
+  <div class="charts-row">
+    <div class="chart-card"><canvas id="chart-pie"></canvas></div>
+    <div class="chart-card"><canvas id="chart-sev"></canvas></div>
+    <div class="chart-card"><canvas id="chart-cat"></canvas></div>
+  </div>
+
+  <h2 class="report-section-title">Issue prioritization</h2>
+  <div class="sev-pills" id="sev-pills"></div>
+
+  <h2 class="report-section-title">Failed tests (root cause & fix)</h2>
+  <div id="failures-container"></div>
+
+  <h2 class="report-section-title">Performance insights</h2>
+  <div class="card" style="padding: 1rem">
+    <ul class="perf-list" id="perf-list"></ul>
+  </div>
+
+  <h2 class="report-section-title">🤖 AI Insights</h2>
+  <div class="card" style="padding: 1rem">
+    <ul class="perf-list" id="ai-insights-list"></ul>
+  </div>
+
+  <h2 class="report-section-title">Test case results</h2>
+  <div class="card" style="padding: 1rem">
+    <div class="report-toolbar">
+      <input type="search" id="f-search" placeholder="Search scenario or name…" style="min-width: 220px" />
+      <select id="f-status">
+        <option value="">All statuses</option>
+        <option value="passed">Passed</option>
+        <option value="failed">Failed</option>
+      </select>
+      <select id="f-sev">
+        <option value="">All severities</option>
+        <option value="Critical">Critical</option>
+        <option value="High">High</option>
+        <option value="Medium">Medium</option>
+        <option value="Low">Low</option>
+      </select>
+      <select id="f-cat">
+        <option value="">All categories</option>
+        <option value="functional">functional</option>
+        <option value="validation">validation</option>
+        <option value="performance">performance</option>
+        <option value="security">security</option>
+        <option value="accessibility">accessibility</option>
+      </select>
+    </div>
+    <div class="table-wrap">
+      <table class="table-report">
+        <thead>
+          <tr>
+            <th>User story</th>
+            <th>Scenario</th>
+            <th>Type</th>
+            <th>Status</th>
+            <th>Severity</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="tbody-tests"></tbody>
+      </table>
+    </div>
+    <div class="report-pagination">
+      <button type="button" class="btn-report" id="btn-prev">Previous</button>
+      <span id="page-label"></span>
+      <button type="button" class="btn-report" id="btn-next">Next</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  (function () {
+    var root = document.getElementById("report-root");
+    var runId = root && root.getAttribute("data-run-id");
+    if (!runId) {
+      root.innerHTML = "<p class=\"muted\">Invalid report.</p>";
+      return;
+    }
+
+    function esc(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+    }
+
+    document.getElementById("dl-pdf").href = "/api/download-report/" + runId;
+    document.getElementById("dl-json").href = "/api/runs/" + runId + "/export.json";
+    document.getElementById("dl-csv").href = "/api/runs/" + runId + "/export.csv";
+
+    var PAGE = 0;
+    var PAGE_SIZE = 40;
+    var TOTAL = 0;
+    var chartsBound = false;
+
+    function renderSummary(payload) {
+      var m = payload.meta || {};
+      document.getElementById("report-subtitle").textContent =
+        (m.url || "") + " · Run #" + (m.runId || runId) + " · " + (m.timestamp || "");
+
+      var s = payload.summary || {};
+      var cards = document.getElementById("summary-cards");
+      cards.innerHTML =
+        '<div class="report-stat"><div class="k">Total tests</div><div class="v">' +
+        esc(s.total) +
+        "</div></div>" +
+        '<div class="report-stat pass"><div class="k">Passed</div><div class="v">' +
+        esc(s.passed) +
+        " ✅</div></div>" +
+        '<div class="report-stat fail"><div class="k">Failed</div><div class="v">' +
+        esc(s.failed) +
+        " ❌</div></div>" +
+        '<div class="report-stat"><div class="k">Coverage</div><div class="v">' +
+        esc(Number(s.coverage || 0).toFixed(1)) +
+        "%</div></div>" +
+        '<div class="report-stat warn"><div class="k">Critical issues</div><div class="v">' +
+        esc(s.critical) +
+        "</div></div>" +
+        '<div class="report-stat"><div class="k">Health score</div><div class="v">' +
+        esc(Number(s.healthScore || 0).toFixed(1)) +
+        "%</div></div>";
+
+      var rd = payload.recommendationDetail || {};
+      var box = document.getElementById("verdict-box");
+      box.className = "report-verdict";
+      var lbl = rd.label || "";
+      if (lbl.indexOf("✅") >= 0) box.classList.add("ready");
+      else if (lbl.indexOf("❌") >= 0) box.classList.add("block");
+      else box.classList.add("fix");
+      document.getElementById("verdict-label").textContent = lbl || "—";
+      document.getElementById("verdict-detail").textContent = rd.verdict || "";
+      var bl = document.getElementById("verdict-blocking");
+      bl.innerHTML = "";
+      (rd.blockingIssues || []).forEach(function (x) {
+        bl.innerHTML += "<li>" + esc(x) + "</li>";
+      });
+      var im = document.getElementById("verdict-improve");
+      im.innerHTML = "";
+      (rd.keyImprovements || []).forEach(function (x) {
+        im.innerHTML += "<li>" + esc(x) + "</li>";
+      });
+    }
+
+    function renderCharts(payload) {
+      var ch = payload.charts || {};
+      var pf = ch.pass_fail || {};
+      var pieData = pf.data || [0, 0];
+      var pieLabels = pf.labels || ["Passed", "Failed"];
+
+      if (chartsBound) return;
+      chartsBound = true;
+
+      new Chart(document.getElementById("chart-pie"), {
+        type: "doughnut",
+        data: {
+          labels: pieLabels.slice(0, 3),
+          datasets: [
+            {
+              data: pieData.slice(0, 3),
+              backgroundColor: ["#22c55e", "#ef4444", "#64748b"],
+            },
+          ],
+        },
+        options: { plugins: { title: { display: true, text: "Pass vs Fail", color: "#94a3b8" } } },
+      });
+
+      var sd = ch.severity_distribution || { labels: [], data: [] };
+      new Chart(document.getElementById("chart-sev"), {
+        type: "bar",
+        data: {
+          labels: sd.labels || [],
+          datasets: [{ label: "Failures", data: sd.data || [], backgroundColor: "#dc2626" }],
+        },
+        options: { plugins: { title: { display: true, text: "Issues by severity", color: "#94a3b8" } } },
+      });
+
+      var tc = ch.tests_by_category || { labels: [], data: [] };
+      new Chart(document.getElementById("chart-cat"), {
+        type: "bar",
+        data: {
+          labels: tc.labels || [],
+          datasets: [{ label: "Tests", data: tc.data || [], backgroundColor: "#6366f1" }],
+        },
+        options: { plugins: { title: { display: true, text: "Tests per category", color: "#94a3b8" } } },
+      });
+    }
+
+    function renderSevPills(payload) {
+      var ip = payload.issuePrioritization || {};
+      var c = ip.countsBySeverity || {};
+      var el = document.getElementById("sev-pills");
+      el.innerHTML = "";
+      var em = { Critical: "🔴", High: "🟠", Medium: "🟡", Low: "🟢" };
+      ["Critical", "High", "Medium", "Low"].forEach(function (k) {
+        var n = c[k] || 0;
+        var cls = k.toLowerCase();
+        el.innerHTML +=
+          '<span class="sev-pill ' + cls + '">' + em[k] + " " + esc(k) + ": " + esc(n) + "</span>";
+      });
+    }
+
+    function renderFailures(payload) {
+      var fc = document.getElementById("failures-container");
+      var fails = payload.failures || [];
+      if (!fails.length) {
+        fc.innerHTML = '<p class="muted">No failures — great job.</p>';
+        return;
+      }
+      fc.innerHTML = fails
+        .map(function (f) {
+          var steps = (f.steps || [])
+            .map(function (s) {
+              return "<li>" + esc(s) + "</li>";
+            })
+            .join("");
+          var logs = (f.logs || [])
+            .map(function (l) {
+              return esc(l);
+            })
+            .join("\n");
+          var img = f.screenshotUrl
+            ? '<p><strong>Screenshot</strong><br/><img src="' +
+              esc(f.screenshotUrl) +
+              '" alt="" style="max-width:100%;max-height:200px;border-radius:8px" /></p>'
+            : "";
+          return (
+            '<div class="failure-card">' +
+            "<h4>" +
+            esc(f.name || f.testId) +
+            " <span class=\"muted\">(" +
+            esc(f.severity || "") +
+            ")</span></h4>" +
+            '<div class="grid-2">' +
+            "<div><strong>Root cause</strong><p class=\"muted\" style=\"margin:0.25rem 0 0;font-size:0.88rem\">" +
+            esc(f.rootCause || "—") +
+            "</p></div>" +
+            "<div><strong>Suggested fix</strong><p class=\"muted\" style=\"margin:0.25rem 0 0;font-size:0.88rem\">" +
+            esc(f.suggestedFix || "—") +
+            "</p></div>" +
+            "</div>" +
+            "<p><strong>Steps</strong></p><ol style=\"margin:0.25rem 0 0 1rem;font-size:0.88rem\">" +
+            (steps || "<li>—</li>") +
+            "</ol>" +
+            "<p><strong>Expected</strong><br/><span class=\"muted\">" +
+            esc(f.expected || "") +
+            "</span></p>" +
+            "<p><strong>Actual</strong><br/><span class=\"muted\">" +
+            esc(f.actual || "") +
+            "</span></p>" +
+            (logs ? '<div class="evidence-box"><strong>Logs</strong><pre>' + esc(logs) + "</pre></div>" : "") +
+            img +
+            "</div>"
+          );
+        })
+        .join("");
+    }
+
+    function renderPerf(payload) {
+      var p = payload.performance || {};
+      var ul = document.getElementById("perf-list");
+      var lines = [
+        "Average page load (crawl): " + Number(p.loadTime || 0).toFixed(1) + " ms",
+        "Slowest page (crawl): " + Number(p.slowestPageMs || 0).toFixed(1) + " ms",
+        "Performance score: " + Number(p.performanceScore || 0).toFixed(1),
+      ];
+      if (p.largestContentfulPaintMs) lines.push("LCP (max sampled): " + p.largestContentfulPaintMs + " ms");
+      if (p.avgTtfbMs != null) lines.push("Avg TTFB (probes): " + p.avgTtfbMs + " ms");
+      ul.innerHTML = lines.map(function (x) {
+        return "<li>" + esc(x) + "</li>";
+      }).join("");
+      (p.slowPages || []).slice(0, 8).forEach(function (sp) {
+        ul.innerHTML +=
+          "<li>" +
+          esc((sp.url || "").slice(0, 80)) +
+          " — " +
+          esc(Number(sp.responseTimeMs || 0).toFixed(0)) +
+          " ms</li>";
+      });
+    }
+
+    function renderAiInsights(payload) {
+      var ul = document.getElementById("ai-insights-list");
+      var arr = payload.aiInsights || [];
+      if (!arr.length) {
+        ul.innerHTML = "<li>No AI insights available for this run.</li>";
+        return;
+      }
+      ul.innerHTML = arr
+        .slice(0, 12)
+        .map(function (x) {
+          return "<li>" + esc(x) + "</li>";
+        })
+        .join("");
+    }
+
+    var ALL = [];
+    function filterRows() {
+      var q = (document.getElementById("f-search").value || "").toLowerCase();
+      var fs = document.getElementById("f-status").value;
+      var fv = document.getElementById("f-sev").value;
+      var fc = document.getElementById("f-cat").value.toLowerCase();
+      return ALL.filter(function (t) {
+        if (fs && (t.status || "") !== fs) return false;
+        if (fv && (t.severity || "") !== fv) return false;
+        if (fc && (t.category || "").toLowerCase() !== fc) return false;
+        if (q) {
+          var b = ((t.user_story || "") + " " + (t.scenario || "") + " " + (t.name || "")).toLowerCase();
+          if (b.indexOf(q) < 0) return false;
+        }
+        return true;
+      });
+    }
+
+    function renderTablePage() {
+      var filtered = filterRows();
+      var pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+      if (PAGE >= pages) PAGE = pages - 1;
+      if (PAGE < 0) PAGE = 0;
+      var start = PAGE * PAGE_SIZE;
+      var slice = filtered.slice(start, start + PAGE_SIZE);
+      var tb = document.getElementById("tbody-tests");
+      tb.innerHTML = slice
+        .map(function (t) {
+          var st = t.status === "passed" ? "✅ Pass" : t.status === "failed" ? "❌ Fail" : "⏳ Pending";
+          return (
+            "<tr>" +
+            "<td>" +
+            esc(t.userStory || "") +
+            "</td>" +
+            "<td>" +
+            esc(t.scenario || "") +
+            "</td>" +
+            "<td>" +
+            esc(t.type || "") +
+            "</td>" +
+            "<td>" +
+            esc(st) +
+            "</td>" +
+            "<td>" +
+            esc(t.severity || "") +
+            "</td>" +
+            "<td><a href=\"#failures-container\">View</a></td>" +
+            "</tr>"
+          );
+        })
+        .join("");
+      document.getElementById("page-label").textContent =
+        filtered.length === 0
+          ? "0 rows"
+          : "Showing " +
+            (start + 1) +
+            "–" +
+            Math.min(start + PAGE_SIZE, filtered.length) +
+            " of " +
+            filtered.length;
+      document.getElementById("btn-prev").disabled = PAGE <= 0;
+      document.getElementById("btn-next").disabled = PAGE >= pages - 1;
+    }
+
+    function loadTestsArray() {
+      return fetch("/api/runs/" + runId + "/tests")
+        .then(function (r) {
+          return r.json();
+        })
+        .then(function (data) {
+          var raw = data.test_cases || [];
+          ALL = raw.map(function (t) {
+            return {
+              userStory: t.user_story || "",
+              scenario: t.scenario || t.title || t.name || "",
+              type: t.test_type || "Positive",
+              status: t.status || "pending",
+              severity: t.severity || "",
+              category: (t.category || "").toLowerCase(),
+              name: t.name || "",
+            };
+          });
+          TOTAL = data.total != null ? data.total : ALL.length;
+          renderTablePage();
+        });
+    }
+
+    fetch("/api/runs/" + runId + "/report?compact=1")
+      .then(function (r) {
+        return r.json();
+      })
+      .then(function (payload) {
+        if (payload.error) throw new Error(payload.error);
+        renderSummary(payload);
+        renderCharts(payload);
+        renderSevPills(payload);
+        renderFailures(payload);
+        renderPerf(payload);
+        renderAiInsights(payload);
+        return loadTestsArray();
+      })
+      .catch(function () {
+        document.getElementById("report-subtitle").textContent = "Failed to load report.";
+      });
+
+    ["f-search", "f-status", "f-sev", "f-cat"].forEach(function (id) {
+      var el = document.getElementById(id);
+      el.addEventListener("input", function () {
+        PAGE = 0;
+        renderTablePage();
+      });
+      el.addEventListener("change", function () {
+        PAGE = 0;
+        renderTablePage();
+      });
+    });
+    document.getElementById("btn-prev").addEventListener("click", function () {
+      PAGE--;
+      renderTablePage();
+    });
+    document.getElementById("btn-next").addEventListener("click", function () {
+      PAGE++;
+      renderTablePage();
+    });
+  })();
+</script>
+{% endblock %}

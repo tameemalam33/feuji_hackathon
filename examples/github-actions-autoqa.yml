@@ -1,0 +1,47 @@
+# AutoQA Pro — GitHub Actions example
+# Copy to: .github/workflows/autoqa.yml in your repo (or merge steps into an existing workflow).
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   AUTOQA_BASE_URL   — e.g. https://your-autoqa-host.example.com  (no trailing slash)
+#   AUTOQA_API_KEY    — must match the server's AUTOQA_API_KEY env (if you enable API key auth)
+#   AUTOQA_TARGET_URL — site to test, e.g. https://staging.example.com
+#
+# Optional:
+#   AUTOQA_WEBHOOK_URL — HTTPS endpoint to receive autoqa.run.completed JSON (Slack incoming webhook, webhook.site, etc.)
+
+name: AutoQA Pro — scheduled UI test
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Daily at 06:00 UTC — adjust as needed
+    - cron: "0 6 * * *"
+
+jobs:
+  autoqa-run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger full QA run
+        env:
+          BASE: ${{ secrets.AUTOQA_BASE_URL }}
+          KEY: ${{ secrets.AUTOQA_API_KEY }}
+          URL: ${{ secrets.AUTOQA_TARGET_URL }}
+          WH: ${{ secrets.AUTOQA_WEBHOOK_URL }}
+        run: |
+          set -e
+          BODY=$(jq -n \
+            --arg u "$URL" \
+            --arg wh "$WH" \
+            '{url:$u, depth:"standard", test_type:"all"} + (if ($wh|length) > 0 then {webhook_url:$wh} else {} end)')
+          HDR=(-H "Content-Type: application/json")
+          if [ -n "$KEY" ]; then HDR+=(-H "X-API-Key: $KEY"); fi
+          RESP=$(curl -sS -w "\n%{http_code}" -X POST "$BASE/api/run-full-test" "${HDR[@]}" -d "$BODY")
+          CODE=$(echo "$RESP" | tail -n1)
+          JSON=$(echo "$RESP" | sed '$d')
+          echo "$JSON" | jq .
+          if [ "$CODE" != "200" ]; then echo "HTTP $CODE"; exit 1; fi
+          FAILED=$(echo "$JSON" | jq -r '.failed // 0')
+          CRIT=$(echo "$JSON" | jq -r '.summary.critical_failures // 0')
+          echo "failed=$FAILED critical_failures=$CRIT"
+          if [ "$FAILED" -gt 0 ]; then echo "Tests reported failures."; exit 1; fi
+          if [ "$CRIT" -gt 0 ]; then echo "Critical failures reported."; exit 1; fi
