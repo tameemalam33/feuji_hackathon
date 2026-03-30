@@ -165,7 +165,7 @@ Add your screenshot and video links here:
 - Report view screenshot: `https://drive.google.com/drive/folders/1Z6uoiGOPEMMb63XjsWmStJPbv3EHenD7?usp=drive_link 
 link se folder open hora ki deakhoE`
 - Video demo link: `https://drive.google.com/drive/folders/1Z6uoiGOPEMMb63XjsWmStJPbv3EHenD7?usp=drive_link 
-link se folder open hora ki deakho`
+`
 
 ## Demo / Usage
 1. Open the dashboard in your browser.
