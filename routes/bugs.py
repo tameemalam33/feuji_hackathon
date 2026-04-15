@@ -95,10 +95,28 @@ def create_bug(project_id: str):
         if not bug:
             return jsonify({"error": "Failed to create bug"}), 500
 
-        return jsonify({
+        # Optionally generate AI explanation if requested and error message is available
+        ai_explanation = None
+        if data.get("generate_explanation") and error_message:
+            try:
+                from services.groq_ai_service import GroqAIService
+                ai_service = GroqAIService()
+                ai_explanation = ai_service.explain_error(
+                    error_message=error_message,
+                    error_type=data.get("error_type"),
+                    context=f"Bug: {title}\nDescription: {description}"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to generate AI explanation: {e}")
+
+        response_data = {
             "message": "Bug reported successfully",
             "bug": bug.to_dict()
-        }), 201
+        }
+        if ai_explanation:
+            response_data["ai_explanation"] = ai_explanation
+
+        return jsonify(response_data), 201
 
     except ValueError as e:
         if "invalid literal for int" in str(e).lower():
