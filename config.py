@@ -70,6 +70,11 @@ WEBHOOK_TIMEOUT_SEC = int(_env("WEBHOOK_TIMEOUT_SEC", "12"))
 # Alert if latest run has at least this many critical-severity failures
 CRITICAL_ALERT_THRESHOLD = int(_env("AUTOQA_CRITICAL_ALERT_THRESHOLD", "1"))
 
+# SaaS Configuration
+SECRET_KEY = _env("SECRET_KEY", "dev-secret-key-change-in-production")
+SESSION_COOKIE_SECURE = _env("SESSION_COOKIE_SECURE", "False") == "True"
+DATABASE_URL = _env("DATABASE_URL", "")  # Neon PostgreSQL connection string
+
 # LLM analysis settings (failure-only intelligence layer)
 LLM_API_KEY = _env("LLM_API_KEY")
 OPENAI_API_KEY = _env("OPENAI_API_KEY")

@@ -1,0 +1,381 @@
+{% extends "base.html" %}
+
+{% block title %}Projects - AutoQA Pro{% endblock %}
+
+{% block content %}
+<div class="content-wrapper">
+    <div class="page-header">
+        <h1>Projects</h1>
+        <button id="newProjectBtn" class="btn-primary">+ New Project</button>
+    </div>
+
+    <div id="projectsList" class="projects-grid">
+        <div class="loading-state">Loading projects...</div>
+    </div>
+</div>
+
+<!-- New Project Modal -->
+<div id="projectModal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Create New Project</h2>
+            <button class="modal-close" aria-label="Close">&times;</button>
+        </div>
+        <form id="projectForm">
+            <div class="form-group">
+                <label for="projectName">Project Name</label>
+                <input type="text" id="projectName" name="name" required />
+            </div>
+
+            <div class="form-group">
+                <label for="projectUrl">Base URL</label>
+                <input type="url" id="projectUrl" name="base_url" placeholder="https://example.com" required />
+            </div>
+
+            <div class="form-group">
+                <label for="projectDescription">Description</label>
+                <textarea id="projectDescription" name="description" rows="3"></textarea>
+            </div>
+
+            <div class="form-group checkbox">
+                <input type="checkbox" id="projectPublic" name="is_public" />
+                <label for="projectPublic">Make project public</label>
+            </div>
+
+            <div class="form-actions">
+                <button type="button" class="btn-secondary" id="cancelBtn">Cancel</button>
+                <button type="submit" class="btn-primary">Create Project</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+    .content-wrapper {
+        padding: 20px;
+    }
+
+    .page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 30px;
+    }
+
+    .page-header h1 {
+        font-size: 28px;
+        color: #333;
+    }
+
+    .btn-primary {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 12px 24px;
+        border: none;
+        border-radius: 4px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s;
+    }
+
+    .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+    }
+
+    .projects-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 20px;
+    }
+
+    .project-card {
+        background: white;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 20px;
+        transition: all 0.3s;
+        cursor: pointer;
+    }
+
+    .project-card:hover {
+        border-color: #667eea;
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+    }
+
+    .project-card h3 {
+        font-size: 18px;
+        color: #333;
+        margin-bottom: 8px;
+    }
+
+    .project-url {
+        font-size: 13px;
+        color: #999;
+        margin-bottom: 12px;
+        word-break: break-all;
+    }
+
+    .project-description {
+        font-size: 14px;
+        color: #666;
+        margin-bottom: 15px;
+        min-height: 40px;
+    }
+
+    .project-meta {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        color: #999;
+        padding-top: 15px;
+        border-top: 1px solid #f0f0f0;
+    }
+
+    .loading-state {
+        grid-column: 1 / -1;
+        text-align: center;
+        padding: 40px 20px;
+        color: #999;
+    }
+
+    .modal {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+
+    .modal-content {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+        max-width: 500px;
+        width: 90%;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 20px;
+        border-bottom: 1px solid #e0e0e0;
+    }
+
+    .modal-header h2 {
+        font-size: 20px;
+        color: #333;
+    }
+
+    .modal-close {
+        background: none;
+        border: none;
+        font-size: 24px;
+        color: #999;
+        cursor: pointer;
+    }
+
+    form {
+        padding: 20px;
+    }
+
+    .form-group {
+        margin-bottom: 20px;
+    }
+
+    .form-group label {
+        display: block;
+        font-size: 14px;
+        font-weight: 500;
+        color: #333;
+        margin-bottom: 8px;
+    }
+
+    .form-group input,
+    .form-group textarea {
+        width: 100%;
+        padding: 12px;
+        font-size: 14px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-family: inherit;
+        resize: vertical;
+    }
+
+    .form-group input:focus,
+    .form-group textarea:focus {
+        outline: none;
+        border-color: #667eea;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+
+    .form-group.checkbox {
+        display: flex;
+        align-items: center;
+    }
+
+    .form-group.checkbox input {
+        width: auto;
+        margin-right: 10px;
+    }
+
+    .form-group.checkbox label {
+        margin-bottom: 0;
+        margin-top: 2px;
+    }
+
+    .form-actions {
+        display: flex;
+        gap: 10px;
+        justify-content: flex-end;
+        margin-top: 30px;
+        padding-top: 20px;
+        border-top: 1px solid #e0e0e0;
+    }
+
+    .btn-secondary {
+        background: #f0f0f0;
+        color: #333;
+        padding: 10px 20px;
+        border: none;
+        border-radius: 4px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s;
+    }
+
+    .btn-secondary:hover {
+        background: #e0e0e0;
+    }
+
+    .error {
+        background: #fee;
+        color: #c33;
+        padding: 15px;
+        border-radius: 4px;
+        margin-bottom: 20px;
+        display: none;
+    }
+
+    .error.show {
+        display: block;
+    }
+</style>
+
+<script>
+    const modal = document.getElementById('projectModal');
+    const form = document.getElementById('projectForm');
+    const newProjectBtn = document.getElementById('newProjectBtn');
+    const cancelBtn = document.getElementById('cancelBtn');
+    const modalClose = document.querySelector('.modal-close');
+    const projectsList = document.getElementById('projectsList');
+
+    // Open modal
+    newProjectBtn.addEventListener('click', () => {
+        modal.style.display = 'flex';
+        form.reset();
+    });
+
+    // Close modal
+    function closeModal() {
+        modal.style.display = 'none';
+    }
+
+    cancelBtn.addEventListener('click', closeModal);
+    modalClose.addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeModal();
+    });
+
+    // Load projects
+    async function loadProjects() {
+        try {
+            const response = await fetch('/api/projects');
+            const data = await response.json();
+
+            if (response.ok) {
+                displayProjects(data.projects);
+            } else {
+                projectsList.innerHTML = '<div class="error">Failed to load projects</div>';
+            }
+        } catch (error) {
+            projectsList.innerHTML = '<div class="error">Connection error</div>';
+        }
+    }
+
+    function displayProjects(projects) {
+        if (projects.length === 0) {
+            projectsList.innerHTML = '<div class="loading-state">No projects yet. Create one to get started!</div>';
+            return;
+        }
+
+        projectsList.innerHTML = projects.map(project => `
+            <div class="project-card" onclick="goToProject('${project.id}')">
+                <h3>${escapeHtml(project.name)}</h3>
+                <div class="project-url">${escapeHtml(project.base_url)}</div>
+                <div class="project-description">${escapeHtml(project.description || 'No description')}</div>
+                <div class="project-meta">
+                    <span>${project.is_public ? 'Public' : 'Private'}</span>
+                    <span>${new Date(project.created_at).toLocaleDateString()}</span>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function goToProject(projectId) {
+        window.location.href = `/project/${projectId}`;
+    }
+
+    // Create project
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const name = document.getElementById('projectName').value;
+        const baseUrl = document.getElementById('projectUrl').value;
+        const description = document.getElementById('projectDescription').value;
+        const isPublic = document.getElementById('projectPublic').checked;
+
+        try {
+            const response = await fetch('/api/projects', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    name,
+                    base_url: baseUrl,
+                    description: description || undefined,
+                    is_public: isPublic
+                })
+            });
+
+            if (response.ok) {
+                closeModal();
+                loadProjects();
+            } else {
+                const data = await response.json();
+                alert(data.error || 'Failed to create project');
+            }
+        } catch (error) {
+            alert('Connection error');
+        }
+    });
+
+    // Initial load
+    loadProjects();
+</script>
+{% endblock %}

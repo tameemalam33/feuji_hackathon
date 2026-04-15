@@ -2,13 +2,13 @@
 -- Creates tables for user management, projects, tasks, and reports
 -- Keeps existing SQLite runs data intact for backward compatibility
 
--- Users table (extends Stack auth if needed)
+-- Users table
 CREATE TABLE IF NOT EXISTS public.saas_users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    stack_user_id UUID REFERENCES neon_auth.user(id) ON DELETE CASCADE,
     email TEXT NOT NULL UNIQUE,
     username TEXT UNIQUE,
     full_name TEXT,
+    password_hash TEXT,
     role TEXT NOT NULL DEFAULT 'tester' CHECK (role IN ('admin', 'tester', 'developer')),
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
@@ -112,11 +112,4 @@ CREATE INDEX IF NOT EXISTS idx_saas_bugs_status ON public.saas_bugs(status);
 CREATE INDEX IF NOT EXISTS idx_saas_reports_project_id ON public.saas_reports(project_id);
 CREATE INDEX IF NOT EXISTS idx_saas_report_files_report_id ON public.saas_report_files(report_id);
 
--- Grant permissions (adjust as needed)
-ALTER TABLE public.saas_users OWNER TO postgres;
-ALTER TABLE public.saas_projects OWNER TO postgres;
-ALTER TABLE public.saas_project_members OWNER TO postgres;
-ALTER TABLE public.saas_qa_tasks OWNER TO postgres;
-ALTER TABLE public.saas_bugs OWNER TO postgres;
-ALTER TABLE public.saas_reports OWNER TO postgres;
-ALTER TABLE public.saas_report_files OWNER TO postgres;
+

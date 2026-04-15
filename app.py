@@ -9,18 +9,35 @@ _ROOT = os.path.abspath(os.path.dirname(__file__))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from flask import Flask, redirect, render_template, url_for
+from flask import Flask, redirect, render_template, url_for, session
 
 from config import BASE_DIR
 from models.database import Database
 from routes.api import api_bp
+from routes.auth import auth_bp
+from routes.users import users_bp
+from routes.projects import projects_bp
+from routes.bugs import bugs_bp
+from routes.saas_qa import saas_qa_bp
 
 app = Flask(
     __name__,
     template_folder=os.path.join(BASE_DIR, "templates"),
     static_folder=os.path.join(BASE_DIR, "static"),
 )
+
+# Configure session
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
+app.config['SESSION_COOKIE_SECURE'] = os.environ.get('SESSION_COOKIE_SECURE', 'True') == 'True'
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['PERMANENT_SESSION_LIFETIME'] = 86400  # 24 hours
+
 app.register_blueprint(api_bp)
+app.register_blueprint(auth_bp)
+app.register_blueprint(users_bp)
+app.register_blueprint(projects_bp)
+app.register_blueprint(bugs_bp)
+app.register_blueprint(saas_qa_bp)
 
 _db = Database()
 _db.init_db()
@@ -28,7 +45,31 @@ _db.init_db()
 
 @app.route("/")
 def root():
-    return redirect(url_for("dashboard"))
+    # Check if user is logged in
+    user_id = session.get('user_id')
+    if user_id:
+        return redirect(url_for("dashboard"))
+    return redirect(url_for("login"))
+
+
+@app.route("/login")
+def login():
+    return render_template("login.html")
+
+
+@app.route("/register")
+def register():
+    return render_template("register.html")
+
+
+@app.route("/projects")
+def projects():
+    return render_template("projects.html")
+
+
+@app.route("/project/<project_id>")
+def project_detail(project_id):
+    return render_template("project_detail.html", project_id=project_id)
 
 
 @app.route("/dashboard")
