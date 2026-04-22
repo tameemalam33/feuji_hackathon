@@ -86,6 +86,19 @@ LLM_PROVIDER = _env(
 LLM_MODEL = _env("LLM_MODEL")
 LLM_MAX_FAILURE_ANALYSIS = max(0, min(5, int(_env("LLM_MAX_FAILURE_ANALYSIS", "3"))))
 
+# Celery & Background Jobs Configuration
+REDIS_URL = _env("REDIS_URL", "redis://localhost:6379/0")  # Upstash Redis
+CELERY_BROKER_URL = REDIS_URL
+CELERY_RESULT_BACKEND = REDIS_URL
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_TIMEZONE = "UTC"
+CELERY_TASK_TRACK_STARTED = True
+CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutes hard limit
+CELERY_TASK_SOFT_TIME_LIMIT = 25 * 60  # 25 minutes soft limit
+CELERY_RESULT_EXPIRES = 3600  # Results expire after 1 hour
+
 os.makedirs(INSTANCE_DIR, exist_ok=True)
 os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
 os.makedirs(VISUAL_BASE_DIR, exist_ok=True)
