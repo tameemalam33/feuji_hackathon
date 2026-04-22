@@ -21,6 +21,8 @@ from routes.bugs import bugs_bp
 from routes.saas_qa import saas_qa_bp
 from routes.ai_analysis import ai_analysis_bp
 from routes.error_analysis import error_analysis_bp
+from routes.job_api import job_api_bp
+from routes.job_monitoring import job_monitoring_bp
 
 app = Flask(
     __name__,
@@ -42,6 +44,8 @@ app.register_blueprint(bugs_bp)
 app.register_blueprint(saas_qa_bp)
 app.register_blueprint(ai_analysis_bp)
 app.register_blueprint(error_analysis_bp)
+app.register_blueprint(job_api_bp)
+app.register_blueprint(job_monitoring_bp)
 
 _db = Database()
 _db.init_db()
